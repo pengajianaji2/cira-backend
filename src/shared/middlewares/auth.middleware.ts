@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import { ForbiddenError, UnauthorizedError } from "../errors/AppError.js";
 import { env } from "../../config/env.config.js";
+import { prisma } from "../../config/db.config.js";
 
 export interface AuthUserPayload {
   id: string;
@@ -18,11 +19,11 @@ declare global {
   }
 }
 
-export const requireAuth = (
+export const requireAuth = async (
   req: Request,
   _res: Response,
   next: NextFunction
-): void => {
+): Promise<void> => {
   const token =
     req.cookies?.token ||
     (req.headers.authorization?.startsWith("Bearer ")
@@ -37,7 +38,25 @@ export const requireAuth = (
 
   try {
     const decoded = jwt.verify(token, env.JWT_SECRET, { algorithms: ["HS256"] }) as AuthUserPayload;
-    req.user = decoded;
+    
+    // Verifikasi keberadaan dan status aktif akun di database (BR-AUTH-12)
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.id },
+      select: { id: true, email: true, name: true, roles: true, isActive: true },
+    });
+
+    if (!user || user.isActive === false) {
+      return next(
+        new UnauthorizedError("Akun Anda telah dinonaktifkan atau tidak ditemukan. Akses ditolak.")
+      );
+    }
+
+    req.user = {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      roles: user.roles,
+    };
     next();
   } catch {
     next(
@@ -51,8 +70,17 @@ export const requireAnyRole = (...allowedRoles: string[]) => (
   _res: Response,
   next: NextFunction
 ): void => {
-  if (!req.user || !Array.isArray(req.user.roles) || !req.user.roles.some((role) => allowedRoles.includes(role))) {
-    return next(new ForbiddenError());
+  if (!req.user || !Array.isArray(req.user.roles)) {
+    return next(new ForbiddenError("Akses ditolak. Peran tidak valid."));
+  }
+  const userRolesNormalized = req.user.roles.map((r) => r.toLowerCase());
+  const allowedRolesNormalized = allowedRoles.map((r) => r.toLowerCase());
+  const hasRole = userRolesNormalized.some((role) =>
+    allowedRolesNormalized.includes(role)
+  );
+
+  if (!hasRole) {
+    return next(new ForbiddenError("Akses ditolak. Anda tidak memiliki izin untuk tindakan ini."));
   }
   next();
 };

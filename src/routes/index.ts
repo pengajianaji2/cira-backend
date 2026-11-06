@@ -1,5 +1,6 @@
 import { Router } from "express";
 import authRoutes from "../features/auth/auth.routes.js";
+import usersRoutes from "../features/users/users.routes.js";
 import projectRoutes from "../features/projects/projects.routes.js";
 import tasksRouter from "../features/tasks/tasks.routes.js";
 import paymentsRouter from "../features/finance/finance.routes.js";
@@ -8,6 +9,7 @@ import assetsRouter from "../features/assets/assets.routes.js";
 const apiRouter = Router();
 
 apiRouter.use("/auth", authRoutes);
+apiRouter.use("/users", usersRoutes);
 apiRouter.use("/projects", projectRoutes);
 apiRouter.use("/tasks", tasksRouter);
 apiRouter.use("/payments", paymentsRouter);

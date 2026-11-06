@@ -7,21 +7,41 @@ datasource db {
 }
 
 model User {
-  id           String        @id @default(uuid())
-  email        String        @unique
-  name         String
-  passwordHash String
-  roles        String[]      @default(["dev"])
-  avatarUrl    String?
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  id             String           @id @default(uuid())
+  email          String           @unique
+  name           String
+  passwordHash   String
+  roles          String[]         @default(["developer"])
+  whatsapp       String?
+  instagram      String?
+  isActive       Boolean          @default(true)
+  isPrimaryOwner Boolean          @default(false)
+  avatarUrl      String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
 
-  projects     Project[]     @relation("UserProjects")
-  tasks        Task[]        @relation("AssignedTasks")
-  payments     Payment[]     @relation("VerifiedPayments")
-  activities   ActivityLog[]
+  projects        Project[]        @relation("UserProjects")
+  tasks           Task[]           @relation("AssignedTasks")
+  payments        Payment[]        @relation("VerifiedPayments")
+  activities      ActivityLog[]
+  sentInvitations UserInvitation[] @relation("InvitedUsers")
 
   @@map("users")
+}
+
+model UserInvitation {
+  id          String   @id @default(uuid())
+  email       String
+  role        String   // developer, operasional
+  token       String   @unique
+  expiresAt   DateTime
+  invitedById String
+  invitedBy   User     @relation("InvitedUsers", fields: [invitedById], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@index([email])
+  @@index([token])
+  @@map("user_invitations")
 }
 
 model Project {
