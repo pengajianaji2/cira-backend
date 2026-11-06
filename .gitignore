@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+
+# Build Output
+dist/
+
+# Environment Variables & Secrets
+.env
+.env*.local
+pass supa
+
+# Logs
+*.log
+npm-debug.log*
+
+# AI Agent Artifacts & Sync
+.agents/
+.claude/
+.cursor/
+.devin/
