@@ -25,9 +25,10 @@ export const authController = {
       secure: env.NODE_ENV === "production",
       sameSite: env.NODE_ENV === "production" ? "none" : "lax",
       maxAge,
+      partitioned: env.NODE_ENV === "production",
     });
 
-    return sendSuccess(res, "Login berhasil.", { user });
+    return sendSuccess(res, "Login berhasil.", { user, token });
   },
 
   async logout(_req: Request, res: Response): Promise<Response> {
@@ -35,6 +36,7 @@ export const authController = {
       httpOnly: true,
       secure: env.NODE_ENV === "production",
       sameSite: env.NODE_ENV === "production" ? "none" : "lax",
+      partitioned: env.NODE_ENV === "production",
     });
 
     return sendSuccess(res, "Logout berhasil.", null);
@@ -81,12 +83,13 @@ export const authController = {
       secure: env.NODE_ENV === "production",
       sameSite: env.NODE_ENV === "production" ? "none" : "lax",
       maxAge: 7 * 24 * 60 * 60 * 1000,
+      partitioned: env.NODE_ENV === "production",
     });
 
     return sendSuccess(
       res,
       "Aktivasi akun berhasil. Selamat datang di Cira PM!",
-      { user },
+      { user, token },
       201
     );
   },
