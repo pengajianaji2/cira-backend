@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { requireAuth } from "../../shared/middlewares/auth.middleware.js";
+import { requireAnyRole, requireAuth } from "../../shared/middlewares/auth.middleware.js";
 import { validateRequest } from "../../shared/middlewares/validateRequest.js";
 import { asyncHandler } from "../../shared/utils/asyncHandler.js";
 import { tasksController } from "./tasks.controller.js";
@@ -52,8 +52,10 @@ tasksRouter.patch(
   asyncHandler(tasksController.updateTask)
 );
 
+// AC-10 / RBAC: Hanya role owner dan operasional yang diizinkan menghapus task
 tasksRouter.delete(
   "/:id",
+  requireAnyRole("owner", "operasional"),
   validateRequest({ params: taskIdParamSchema }),
   asyncHandler(tasksController.deleteTask)
 );

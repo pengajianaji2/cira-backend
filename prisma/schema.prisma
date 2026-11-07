@@ -56,6 +56,7 @@ model Project {
   clientContact String
   status        String        @default("lead") // lead, active, completed, cancelled
   repoType      String        @default("monorepo") // monorepo, separate
+  progress      Float         @default(0)
   contractValue Float         @default(0)
   prdContent    String?       @db.Text
   createdAt     DateTime      @default(now())
@@ -64,6 +65,7 @@ model Project {
   ownerId         String?
   owner           User?                   @relation("UserProjects", fields: [ownerId], references: [id])
   tasks           Task[]
+  sprints         Sprint[]
   payments        Payment[]
   assets          DesignAsset[]
   activities      ActivityLog[]
@@ -167,13 +169,35 @@ model PrdVersion {
   @@index([createdAt])
 }
 
+model Sprint {
+  id          String    @id @default(uuid())
+  projectId   String
+  name        String
+  goal        String?   @db.Text
+  status      String    @default("planning") // planning, active, completed
+  startDate   DateTime?
+  endDate     DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tasks       Task[]
+
+  @@map("sprints")
+  @@index([projectId, status])
+  @@index([createdAt])
+}
+
 model Task {
   id           String   @id @default(uuid())
   projectId    String
+  sprintId     String?
   title        String
   description  String?  @db.Text
   status       String   @default("todo") // todo, in_progress, done
   priority     String   @default("medium") // low, medium, high, urgent
+  storyPoints  Int?
   order        Int      @default(0)
   assigneeName String?
   assigneeRole String?
@@ -183,9 +207,11 @@ model Task {
   updatedAt    DateTime @updatedAt
 
   project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sprint       Sprint?  @relation(fields: [sprintId], references: [id], onDelete: SetNull)
 
   @@map("tasks")
   @@index([projectId, status, order])
+  @@index([sprintId])
 }
 
 model Payment {

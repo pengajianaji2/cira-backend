@@ -7,6 +7,8 @@ export interface CreateTaskDto {
   status?: TaskStatus;
   priority?: TaskPriority;
   order?: number;
+  storyPoints?: number;
+  sprintId?: string;
   assigneeId?: string;
   assigneeName?: string;
   assigneeRole?: string;
@@ -18,6 +20,8 @@ export interface UpdateTaskDto {
   status?: TaskStatus;
   priority?: TaskPriority;
   order?: number;
+  storyPoints?: number | null;
+  sprintId?: string | null;
   assigneeId?: string | null;
   assigneeName?: string | null;
   assigneeRole?: string | null;

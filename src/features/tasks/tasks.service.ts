@@ -1,5 +1,7 @@
-import { NotFoundError } from "../../shared/errors/AppError.js";
+import { BadRequestError, NotFoundError } from "../../shared/errors/AppError.js";
 import { AuthUserPayload } from "../../shared/middlewares/auth.middleware.js";
+import { sprintsRepository } from "../sprints/sprints.repository.js";
+import { FIBONACCI_POINTS } from "../sprints/sprints.types.js";
 import { tasksRepository } from "./tasks.repository.js";
 import {
   CreateTaskDto,
@@ -7,6 +9,11 @@ import {
   UpdateTaskDto,
   UpdateTaskStatusDto,
 } from "./tasks.types.js";
+
+function isFibonacci(points: number | null | undefined): boolean {
+  if (points === null || points === undefined) return false;
+  return (FIBONACCI_POINTS as readonly number[]).includes(points);
+}
 
 export const tasksService = {
   async getTasksByProjectId(projectId: string): Promise<ProjectTasksResult> {
@@ -33,6 +40,28 @@ export const tasksService = {
       throw new NotFoundError(`Proyek dengan ID '${projectId}' tidak ditemukan.`);
     }
 
+    // Jika task langsung dimasukkan ke sprint
+    if (dto.sprintId) {
+      const sprint = await sprintsRepository.findById(dto.sprintId);
+      if (!sprint) {
+        throw new NotFoundError(`Sprint dengan ID '${dto.sprintId}' tidak ditemukan.`);
+      }
+
+      // Jika sprint berstatus aktif, wajib memiliki assignee dan Fibonacci points
+      if (sprint.status === "active") {
+        if (!dto.assigneeId) {
+          throw new BadRequestError(
+            "Task yang dimasukkan ke sprint aktif wajib memiliki tepat satu assignee."
+          );
+        }
+        if (!isFibonacci(dto.storyPoints)) {
+          throw new BadRequestError(
+            "Task yang dimasukkan ke sprint aktif wajib memiliki story points Fibonacci (1, 2, 3, 5, 8, 13)."
+          );
+        }
+      }
+    }
+
     let order = dto.order;
     if (order === undefined) {
       order = await tasksRepository.getNextOrder(projectId, dto.status || "todo");
@@ -55,8 +84,16 @@ export const tasksService = {
         taskId: task.id,
         status: task.status,
         priority: task.priority,
+        storyPoints: task.storyPoints,
+        sprintId: task.sprintId,
       },
     });
+
+    // Perbarui progres kumulatif proyek jika task memiliki poin
+    if (task.storyPoints) {
+      const cumulative = await sprintsRepository.calculateCumulativeProgress(projectId);
+      await sprintsRepository.updateProjectProgress(projectId, cumulative.progress);
+    }
 
     return task;
   },
@@ -97,6 +134,10 @@ export const tasksService = {
       },
     });
 
+    // Rekalkulasi progres proyek jika status berubah
+    const cumulative = await sprintsRepository.calculateCumulativeProgress(existing.projectId);
+    await sprintsRepository.updateProjectProgress(existing.projectId, cumulative.progress);
+
     return updated;
   },
 
@@ -104,6 +145,27 @@ export const tasksService = {
     const existing = await tasksRepository.findById(id);
     if (!existing) {
       throw new NotFoundError(`Task dengan ID '${id}' tidak ditemukan.`);
+    }
+
+    // Jika sprintId diubah ke sprint aktif
+    const targetSprintId = dto.sprintId !== undefined ? dto.sprintId : existing.sprintId;
+    if (targetSprintId) {
+      const sprint = await sprintsRepository.findById(targetSprintId);
+      if (sprint && sprint.status === "active") {
+        const finalAssigneeId = dto.assigneeId !== undefined ? dto.assigneeId : existing.assigneeId;
+        const finalPoints = dto.storyPoints !== undefined ? dto.storyPoints : existing.storyPoints;
+
+        if (!finalAssigneeId) {
+          throw new BadRequestError(
+            "Task dalam sprint aktif wajib memiliki tepat satu assignee."
+          );
+        }
+        if (!isFibonacci(finalPoints)) {
+          throw new BadRequestError(
+            "Task dalam sprint aktif wajib memiliki story points Fibonacci (1, 2, 3, 5, 8, 13)."
+          );
+        }
+      }
     }
 
     const updated = await tasksRepository.update(id, dto);
@@ -125,6 +187,10 @@ export const tasksService = {
         changes: dto,
       },
     });
+
+    // Rekalkulasi progres kumulatif proyek
+    const cumulative = await sprintsRepository.calculateCumulativeProgress(existing.projectId);
+    await sprintsRepository.updateProjectProgress(existing.projectId, cumulative.progress);
 
     return updated;
   },
@@ -150,6 +216,10 @@ export const tasksService = {
         title: existing.title,
       },
     });
+
+    // Rekalkulasi progres kumulatif proyek
+    const cumulative = await sprintsRepository.calculateCumulativeProgress(existing.projectId);
+    await sprintsRepository.updateProjectProgress(existing.projectId, cumulative.progress);
 
     return existing;
   },

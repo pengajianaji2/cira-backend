@@ -6,6 +6,7 @@ import { projectActivitiesRouter } from "../activity/activity.routes.js";
 import { projectAssetsRouter } from "../assets/assets.routes.js";
 import { financeController } from "../finance/finance.controller.js";
 import { projectPaymentsRouter } from "../finance/finance.routes.js";
+import { projectSprintsRouter } from "../sprints/sprints.routes.js";
 import { projectTasksRouter } from "../tasks/tasks.routes.js";
 import { governanceController } from "./governance.controller.js";
 import {
@@ -39,6 +40,9 @@ router.use(requireAuth);
 // Sub-rute untuk relasi proyek:
 // 1. Kanban Tasks: /api/v1/projects/:projectId/tasks
 router.use("/:projectId/tasks", projectTasksRouter);
+
+// 1b. Sprints: /api/v1/projects/:projectId/sprints
+router.use("/:projectId/sprints", projectSprintsRouter);
 
 // 2. Termin Pembayaran: /api/v1/projects/:projectId/payments
 router.use("/:projectId/payments", projectPaymentsRouter);

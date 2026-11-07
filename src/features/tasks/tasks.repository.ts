@@ -1,6 +1,24 @@
 import { prisma } from "../../config/db.config.js";
 import { CreateTaskDto, UpdateTaskDto } from "./tasks.types.js";
 
+const taskIncludes = {
+  assignee: {
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      avatarUrl: true,
+    },
+  },
+  sprint: {
+    select: {
+      id: true,
+      name: true,
+      status: true,
+    },
+  },
+};
+
 export const tasksRepository = {
   async findProjectById(projectId: string) {
     return prisma.project.findUnique({
@@ -16,16 +34,7 @@ export const tasksRepository = {
         { order: "asc" },
         { createdAt: "asc" },
       ],
-      include: {
-        assignee: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            avatarUrl: true,
-          },
-        },
-      },
+      include: taskIncludes,
     });
   },
 
@@ -48,23 +57,13 @@ export const tasksRepository = {
       return isVerified && isDp;
     });
 
-    // Jika ada DP terverifikasi atau pembayaran pertama sudah terverifikasi
     return verifiedDp || payments.some((p) => p.status === "verified");
   },
 
   async findById(id: string) {
     return prisma.task.findUnique({
       where: { id },
-      include: {
-        assignee: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            avatarUrl: true,
-          },
-        },
-      },
+      include: taskIncludes,
     });
   },
 
@@ -87,20 +86,13 @@ export const tasksRepository = {
         status: data.status || "todo",
         priority: data.priority || "medium",
         order: data.order ?? 0,
+        storyPoints: data.storyPoints,
+        sprintId: data.sprintId,
         assigneeId: data.assigneeId,
         assigneeName: data.assigneeName,
         assigneeRole: data.assigneeRole,
       },
-      include: {
-        assignee: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            avatarUrl: true,
-          },
-        },
-      },
+      include: taskIncludes,
     });
   },
 
@@ -108,16 +100,7 @@ export const tasksRepository = {
     return prisma.task.update({
       where: { id },
       data,
-      include: {
-        assignee: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            avatarUrl: true,
-          },
-        },
-      },
+      include: taskIncludes,
     });
   },
 
