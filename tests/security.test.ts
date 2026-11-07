@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 process.env.JWT_SECRET = "test_only_secret_value_at_least_32_chars_long";
 process.env.NODE_ENV = "test";
 
-const [{ validateBrowserOrigin }, { requireAuth, requireAnyRole }, { createDesignAssetSchema }, { loginSchema }, { validateRequest }, { activityFilterQuerySchema }, { loginRateLimit }, { errorHandler }, { getAllowedOrigins }, { updatePaymentSchema }, { validateCsrf }, { changePasswordSchema }, jwtModule] = await Promise.all([
+const [{ validateBrowserOrigin }, { requireAuth, requireAnyRole }, { createDesignAssetSchema }, { loginSchema }, { validateRequest }, { activityFilterQuerySchema }, { loginRateLimit }, { errorHandler }, { getAllowedOrigins }, { updatePaymentSchema }, { validateCsrf }, { changePasswordSchema }, jwtModule, { prisma }] = await Promise.all([
   import("../src/shared/middlewares/validateBrowserOrigin.js"),
   import("../src/shared/middlewares/auth.middleware.js"),
   import("../src/features/assets/assets.schema.js"),
@@ -18,6 +18,7 @@ const [{ validateBrowserOrigin }, { requireAuth, requireAnyRole }, { createDesig
   import("../src/shared/middlewares/csrf.js"),
   import("../src/features/auth/auth.schema.js").then((module) => ({ changePasswordSchema: module.changePasswordSchema })),
   import("jsonwebtoken"),
+  import("../src/config/db.config.js"),
 ]);
 const jwt = jwtModule.default;
 
@@ -68,16 +69,26 @@ test("finance role middleware allows owner and denies developer-only accounts", 
   assert.equal(passed, true);
 });
 
-test("authentication middleware accepts a valid HS256 token and rejects forged tokens", () => {
+test("authentication middleware accepts a valid HS256 token and rejects forged tokens", async () => {
   const token = jwt.sign({ id: "user-1", email: "user@example.test", name: "User", roles: ["dev"] }, process.env.JWT_SECRET!, { algorithm: "HS256" });
   const request = { cookies: { token }, headers: {} };
+
+  // Mock DB lookup agar offline test environment tidak mencoba jaringan eksternal
+  (prisma.user as any).findUnique = async () => ({
+    id: "user-1",
+    email: "user@example.test",
+    name: "User",
+    roles: ["dev"],
+    isActive: true,
+  });
+
   let accepted = false;
-  requireAuth(request as never, {} as never, (error) => { assert.equal(error, undefined); accepted = true; });
+  await requireAuth(request as never, {} as never, (error) => { assert.equal(error, undefined); accepted = true; });
   assert.equal(accepted, true);
   assert.equal((request as { user?: { id: string } }).user?.id, "user-1");
 
   let rejected: unknown;
-  requireAuth({ cookies: { token: `${token}forged` }, headers: {} } as never, {} as never, (error) => { rejected = error; });
+  await requireAuth({ cookies: { token: `${token}forged` }, headers: {} } as never, {} as never, (error) => { rejected = error; });
   assert.equal((rejected as { statusCode: number }).statusCode, 401);
 });
 

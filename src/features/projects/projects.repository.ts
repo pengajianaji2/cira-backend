@@ -32,6 +32,9 @@ export const projectsRepository = {
           select: {
             tasks: true,
             payments: true,
+            roster: true,
+            repositoryLinks: true,
+            prdVersions: true,
           },
         },
       },
@@ -48,6 +51,61 @@ export const projectsRepository = {
             name: true,
             email: true,
             avatarUrl: true,
+          },
+        },
+        roster: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                roles: true,
+                avatarUrl: true,
+                whatsapp: true,
+                instagram: true,
+                isActive: true,
+              },
+            },
+          },
+          orderBy: { createdAt: "asc" },
+        },
+        repositoryLinks: {
+          orderBy: { createdAt: "asc" },
+        },
+        statusRequests: {
+          orderBy: { createdAt: "desc" },
+          take: 5,
+          include: {
+            votes: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    roles: true,
+                    avatarUrl: true,
+                  },
+                },
+              },
+            },
+            requestedBy: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                roles: true,
+              },
+            },
+            finalDecisionBy: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                roles: true,
+              },
+            },
           },
         },
         tasks: {
@@ -72,6 +130,7 @@ export const projectsRepository = {
         clientContact: data.clientContact,
         contractValue: data.contractValue ?? 0,
         prdContent: data.prdContent,
+        repoType: data.repoType ?? "monorepo",
         ownerId: data.ownerId,
         status: "lead",
       },

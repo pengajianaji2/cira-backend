@@ -1,4 +1,5 @@
 export type ProjectStatus = "lead" | "active" | "completed" | "cancelled";
+export type ProjectRepoType = "monorepo" | "separate";
 
 export interface CreateProjectDto {
   name: string;
@@ -6,6 +7,7 @@ export interface CreateProjectDto {
   clientContact: string;
   contractValue?: number;
   prdContent?: string;
+  repoType?: ProjectRepoType;
 }
 
 export interface UpdateProjectDto {
@@ -15,6 +17,7 @@ export interface UpdateProjectDto {
   status?: ProjectStatus;
   contractValue?: number;
   prdContent?: string;
+  repoType?: ProjectRepoType;
 }
 
 export interface ProjectQueryFilter {

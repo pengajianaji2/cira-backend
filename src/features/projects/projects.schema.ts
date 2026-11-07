@@ -6,6 +6,7 @@ export const createProjectSchema = z.object({
   clientContact: z.string().trim().min(1, "Kontak klien wajib diisi").max(500),
   contractValue: z.number().nonnegative("Nilai kontrak tidak boleh negatif").optional(),
   prdContent: z.string().max(200_000).optional(),
+  repoType: z.enum(["monorepo", "separate"]).optional(),
 });
 
 export const updateProjectSchema = z.object({
@@ -15,6 +16,7 @@ export const updateProjectSchema = z.object({
   status: z.enum(["lead", "active", "completed", "cancelled"]).optional(),
   contractValue: z.number().nonnegative("Nilai kontrak tidak boleh negatif").optional(),
   prdContent: z.string().max(200_000).optional(),
+  repoType: z.enum(["monorepo", "separate"]).optional(),
 });
 
 export const projectQuerySchema = z.object({

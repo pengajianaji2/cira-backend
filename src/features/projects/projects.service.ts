@@ -1,8 +1,10 @@
+import zlib from "node:zlib";
 import { NotFoundError } from "../../shared/errors/AppError.js";
 import { AuthUserPayload } from "../../shared/middlewares/auth.middleware.js";
 import { projectsRepository } from "./projects.repository.js";
 import { CreateProjectDto, ProjectQueryFilter, UpdateProjectDto } from "./projects.types.js";
 import { cloudinaryStorage } from "../assets/cloudinary.service.js";
+import { prisma } from "../../config/db.config.js";
 
 const generateDefaultPrdContent = (projectName: string, clientName: string): string => {
   return `# PRD: ${projectName}
@@ -53,6 +55,36 @@ export const projectsService = {
       ownerId: user?.id,
     });
 
+    // Otomatis daftarkan pembuat proyek ke ProjectRoster (US-2)
+    if (user?.id) {
+      await prisma.projectRoster.create({
+        data: {
+          projectId: project.id,
+          userId: user.id,
+          roleInProject: user.roles?.[0] || "owner",
+        },
+      });
+    }
+
+    // Buat snapshot Versi #1 PRD terkompresi GZIP (AC-B2-4)
+    const compressedPrd = zlib.gzipSync(Buffer.from(prdContent, "utf-8"));
+    const uint8Prd = new Uint8Array(
+      compressedPrd.buffer,
+      compressedPrd.byteOffset,
+      compressedPrd.byteLength
+    ) as Uint8Array<ArrayBuffer>;
+
+    await prisma.prdVersion.create({
+      data: {
+        projectId: project.id,
+        versionNumber: 1,
+        compressedContent: uint8Prd,
+        charCount: prdContent.length,
+        description: "Versi Awal PRD",
+        createdById: user?.id,
+      },
+    });
+
     await projectsRepository.logActivity({
       projectId: project.id,
       category: "project",
@@ -65,6 +97,7 @@ export const projectsService = {
         clientName: project.clientName,
         contractValue: project.contractValue,
         status: project.status,
+        repoType: project.repoType,
       },
     });
 
@@ -95,14 +128,42 @@ export const projectsService = {
         },
       });
     } else if (dto.prdContent && dto.prdContent !== existing.prdContent) {
+      // Simpan riwayat versi PRD terkompresi GZIP jika ada perubahan teks PRD
+      const latest = await prisma.prdVersion.findFirst({
+        where: { projectId: id },
+        orderBy: { versionNumber: "desc" },
+      });
+      const nextVersionNumber = (latest?.versionNumber ?? 0) + 1;
+      const compressedPrd = zlib.gzipSync(Buffer.from(dto.prdContent, "utf-8"));
+      const uint8Prd = new Uint8Array(
+        compressedPrd.buffer,
+        compressedPrd.byteOffset,
+        compressedPrd.byteLength
+      ) as Uint8Array<ArrayBuffer>;
+
+      await prisma.prdVersion.create({
+        data: {
+          projectId: id,
+          versionNumber: nextVersionNumber,
+          compressedContent: uint8Prd,
+          charCount: dto.prdContent.length,
+          description: `Pembaruan PRD #${nextVersionNumber}`,
+          createdById: user?.id,
+        },
+      });
+
       await projectsRepository.logActivity({
         projectId: id,
         category: "project",
         action: "PRD_UPDATE",
-        description: "Dokumen PRD spesifikasi proyek berhasil diperbarui.",
+        description: `Dokumen PRD spesifikasi proyek diperbarui (Versi #${nextVersionNumber}).`,
         userId: user?.id,
         userName: user?.name,
         userRole: user?.roles?.[0],
+        metadata: {
+          versionNumber: nextVersionNumber,
+          charCount: dto.prdContent.length,
+        },
       });
     } else {
       await projectsRepository.logActivity({

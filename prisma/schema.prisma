@@ -20,11 +20,16 @@ model User {
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
-  projects        Project[]        @relation("UserProjects")
-  tasks           Task[]           @relation("AssignedTasks")
-  payments        Payment[]        @relation("VerifiedPayments")
-  activities      ActivityLog[]
-  sentInvitations UserInvitation[] @relation("InvitedUsers")
+  projects                 Project[]              @relation("UserProjects")
+  tasks                    Task[]                 @relation("AssignedTasks")
+  payments                 Payment[]              @relation("VerifiedPayments")
+  activities               ActivityLog[]
+  sentInvitations          UserInvitation[]       @relation("InvitedUsers")
+  projectRosters           ProjectRoster[]
+  requestedStatusChanges   ProjectStatusRequest[] @relation("RequestedStatusChanges")
+  decidedStatusChanges     ProjectStatusRequest[] @relation("FinalDecidedStatusChanges")
+  statusVotes              ProjectStatusVote[]
+  prdVersions              PrdVersion[]
 
   @@map("users")
 }
@@ -50,21 +55,116 @@ model Project {
   clientName    String
   clientContact String
   status        String        @default("lead") // lead, active, completed, cancelled
+  repoType      String        @default("monorepo") // monorepo, separate
   contractValue Float         @default(0)
   prdContent    String?       @db.Text
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
-  ownerId       String?
-  owner         User?         @relation("UserProjects", fields: [ownerId], references: [id])
-  tasks         Task[]
-  payments      Payment[]
-  assets        DesignAsset[]
-  activities    ActivityLog[]
+  ownerId         String?
+  owner           User?                   @relation("UserProjects", fields: [ownerId], references: [id])
+  tasks           Task[]
+  payments        Payment[]
+  assets          DesignAsset[]
+  activities      ActivityLog[]
+  roster          ProjectRoster[]
+  statusRequests  ProjectStatusRequest[]
+  repositoryLinks ProjectRepositoryLink[]
+  prdVersions     PrdVersion[]
 
   @@map("projects")
   @@index([createdAt])
   @@index([status, createdAt])
+}
+
+model ProjectRoster {
+  id            String   @id @default(uuid())
+  projectId     String
+  userId        String
+  roleInProject String?  // e.g. lead, developer, operasional, member
+  createdAt     DateTime @default(now())
+
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@map("project_rosters")
+  @@index([projectId])
+  @@index([userId])
+}
+
+model ProjectStatusRequest {
+  id                String              @id @default(uuid())
+  projectId         String
+  targetStatus      String              // lead, active, completed, cancelled
+  reason            String              @db.Text
+  status            String              @default("pending") // pending, approved, rejected
+  requestedById     String
+  requestedBy       User                @relation("RequestedStatusChanges", fields: [requestedById], references: [id])
+  finalDecisionById String?
+  finalDecisionBy   User?               @relation("FinalDecidedStatusChanges", fields: [finalDecisionById], references: [id])
+  finalDecision     String?             // approved, rejected
+  finalReason       String?             @db.Text
+  finalDecisionAt   DateTime?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  project           Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  votes             ProjectStatusVote[]
+
+  @@map("project_status_requests")
+  @@index([projectId, status])
+  @@index([createdAt])
+}
+
+model ProjectStatusVote {
+  id        String               @id @default(uuid())
+  requestId String
+  userId    String
+  vote      String               // approve, reject
+  reason    String?              @db.Text
+  createdAt DateTime             @default(now())
+
+  request   ProjectStatusRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([requestId, userId])
+  @@map("project_status_votes")
+  @@index([requestId])
+  @@index([userId])
+}
+
+model ProjectRepositoryLink {
+  id        String   @id @default(uuid())
+  projectId String
+  label     String   // e.g. "Frontend", "Backend", "Mobile", "Repository Utama"
+  url       String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("project_repository_links")
+  @@index([projectId])
+}
+
+model PrdVersion {
+  id                String   @id @default(uuid())
+  projectId         String
+  versionNumber     Int
+  compressedContent Bytes
+  charCount         Int
+  description       String?
+  createdById       String?
+  createdBy         User?    @relation(fields: [createdById], references: [id])
+  createdAt         DateTime @default(now())
+
+  project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, versionNumber])
+  @@map("prd_versions")
+  @@index([projectId, versionNumber])
+  @@index([createdAt])
 }
 
 model Task {
