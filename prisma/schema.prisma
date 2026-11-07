@@ -67,6 +67,7 @@ model Project {
   tasks           Task[]
   sprints         Sprint[]
   payments        Payment[]
+  paymentTerms    PaymentTerm[]
   assets          DesignAsset[]
   activities      ActivityLog[]
   roster          ProjectRoster[]
@@ -181,8 +182,9 @@ model Sprint {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  tasks       Task[]
+  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tasks        Task[]
+  paymentTerms PaymentTerm[]
 
   @@map("sprints")
   @@index([projectId, status])
@@ -237,6 +239,37 @@ model Payment {
   @@map("payments")
   @@index([projectId, createdAt])
   @@index([projectId, status])
+}
+
+model PaymentTerm {
+  id              String    @id @default(uuid())
+  projectId       String
+  termNumber      Int
+  title           String
+  percentage      Float
+  amount          Float
+  triggerType     String    @default("manual") // date, sprint, manual
+  triggerSprintId String?
+  dueDate         String?
+  status          String    @default("planned") // planned, ready, invoiced, paid
+  bastUrl         String?   @db.Text
+  bastFileName    String?
+  bastUploadedAt  DateTime?
+  invoiceNumber   String?   @unique
+  invoiceIssuedAt DateTime?
+  invoicePdfUrl   String?   @db.Text
+  isLocked        Boolean   @default(false)
+  notes           String?   @db.Text
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  project         Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  triggerSprint   Sprint?   @relation(fields: [triggerSprintId], references: [id], onDelete: SetNull)
+
+  @@map("payment_terms")
+  @@index([projectId, termNumber])
+  @@index([projectId, status])
+  @@index([invoiceNumber])
 }
 
 model DesignAsset {

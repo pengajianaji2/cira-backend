@@ -1,14 +1,138 @@
 import { prisma } from "../../config/db.config.js";
-import { CreatePaymentDto, UpdatePaymentDto } from "./finance.types.js";
+import { CreatePaymentDto } from "./finance.types.js";
+
+const termIncludes = {
+  triggerSprint: {
+    select: {
+      id: true,
+      name: true,
+      status: true,
+    },
+  },
+};
 
 export const financeRepository = {
   async findProjectById(projectId: string) {
     return prisma.project.findUnique({
       where: { id: projectId },
-      select: { id: true, name: true, contractValue: true },
+      select: { id: true, name: true, contractValue: true, status: true },
     });
   },
 
+  async findProjectWithTerms(projectId: string) {
+    return prisma.project.findUnique({
+      where: { id: projectId },
+      include: {
+        paymentTerms: {
+          orderBy: { termNumber: "asc" },
+          include: termIncludes,
+        },
+      },
+    });
+  },
+
+  async findTermsByProjectId(projectId: string) {
+    return prisma.paymentTerm.findMany({
+      where: { projectId },
+      orderBy: { termNumber: "asc" },
+      include: termIncludes,
+    });
+  },
+
+  async findTermById(id: string) {
+    return prisma.paymentTerm.findUnique({
+      where: { id },
+      include: {
+        project: true,
+        triggerSprint: true,
+      },
+    });
+  },
+
+  async findSprintById(sprintId: string) {
+    return prisma.sprint.findUnique({
+      where: { id: sprintId },
+      select: { id: true, name: true, status: true },
+    });
+  },
+
+  async saveContractWithTerms(
+    projectId: string,
+    contractValue: number,
+    terms: Array<{
+      termNumber: number;
+      title: string;
+      percentage: number;
+      amount: number;
+      triggerType: string;
+      triggerSprintId?: string | null;
+      dueDate?: string | null;
+      notes?: string | null;
+    }>
+  ) {
+    return prisma.$transaction(async (tx) => {
+      // 1. Update nilai kontrak pada proyek
+      await tx.project.update({
+        where: { id: projectId },
+        data: { contractValue },
+      });
+
+      // 2. Hapus termin yang ada sebelumnya (hanya jika belum terkunci)
+      await tx.paymentTerm.deleteMany({
+        where: { projectId },
+      });
+
+      // 3. Masukkan daftar termin baru
+      const createdTerms = [];
+      for (const t of terms) {
+        const created = await tx.paymentTerm.create({
+          data: {
+            projectId,
+            termNumber: t.termNumber,
+            title: t.title,
+            percentage: t.percentage,
+            amount: t.amount,
+            triggerType: t.triggerType,
+            triggerSprintId: t.triggerSprintId || null,
+            dueDate: t.dueDate || null,
+            notes: t.notes || null,
+            status: "planned",
+            isLocked: false,
+          },
+          include: termIncludes,
+        });
+        createdTerms.push(created);
+      }
+
+      return createdTerms;
+    });
+  },
+
+  async updateTerm(id: string, data: any) {
+    return prisma.paymentTerm.update({
+      where: { id },
+      data,
+      include: termIncludes,
+    });
+  },
+
+  async deleteTerm(id: string) {
+    return prisma.paymentTerm.delete({
+      where: { id },
+    });
+  },
+
+  async countInvoicedTermsInYear(year: number): Promise<number> {
+    return prisma.paymentTerm.count({
+      where: {
+        invoiceNumber: {
+          startsWith: `INV-${year}-`,
+        },
+      },
+    });
+  },
+
+  // Backward-compatible Payment queries
   async findByProjectId(projectId: string) {
     return prisma.payment.findMany({
       where: { projectId },

@@ -3,6 +3,50 @@ import { sendSuccess } from "../../shared/utils/responseFormatter.js";
 import { financeService } from "./finance.service.js";
 
 export const financeController = {
+  // =========================================================================
+  // US-4: Kontrak & Termin Pembayaran 100%
+  // =========================================================================
+
+  async createProjectContract(req: Request, res: Response): Promise<Response> {
+    const projectId = req.params.projectId as string;
+    const result = await financeService.createContract(projectId, req.body, req.user);
+    return sendSuccess(res, "Kontrak dan termin pembayaran berhasil dikonfigurasi", result, 201);
+  },
+
+  async getProjectTerms(req: Request, res: Response): Promise<Response> {
+    const projectId = req.params.projectId as string;
+    const terms = await financeService.getProjectTerms(projectId);
+    return sendSuccess(res, "Daftar termin pembayaran berhasil diambil", terms);
+  },
+
+  async getTermById(req: Request, res: Response): Promise<Response> {
+    const id = req.params.id as string;
+    const term = await financeService.getTermById(id);
+    return sendSuccess(res, "Detail termin pembayaran berhasil diambil", term);
+  },
+
+  async markTermReadyWithBast(req: Request, res: Response): Promise<Response> {
+    const id = req.params.id as string;
+    const term = await financeService.markTermReadyWithBast(id, req.body, req.user);
+    return sendSuccess(res, "Dokumen BAST berhasil diunggah. Termin siap ditagih.", term);
+  },
+
+  async issueTermInvoice(req: Request, res: Response): Promise<Response> {
+    const id = req.params.id as string;
+    const term = await financeService.issueTermInvoice(id, req.body, req.user);
+    return sendSuccess(res, `Invoice resmi ${term.invoiceNumber} berhasil diterbitkan`, term);
+  },
+
+  async deleteTerm(req: Request, res: Response): Promise<Response> {
+    const id = req.params.id as string;
+    const result = await financeService.deleteTerm(id, req.user);
+    return sendSuccess(res, "Termin pembayaran berhasil dihapus", result);
+  },
+
+  // =========================================================================
+  // Existing Payment Handlers
+  // =========================================================================
+
   async getProjectPayments(req: Request, res: Response): Promise<Response> {
     const projectId = req.params.projectId as string;
     const payments = await financeService.getPaymentsByProjectId(projectId);

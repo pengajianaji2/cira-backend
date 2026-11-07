@@ -6,6 +6,7 @@ import { projectActivitiesRouter } from "../activity/activity.routes.js";
 import { projectAssetsRouter } from "../assets/assets.routes.js";
 import { financeController } from "../finance/finance.controller.js";
 import { projectPaymentsRouter } from "../finance/finance.routes.js";
+import { createContractSchema } from "../finance/finance.schema.js";
 import { projectSprintsRouter } from "../sprints/sprints.routes.js";
 import { projectTasksRouter } from "../tasks/tasks.routes.js";
 import { governanceController } from "./governance.controller.js";
@@ -46,6 +47,19 @@ router.use("/:projectId/sprints", projectSprintsRouter);
 
 // 2. Termin Pembayaran: /api/v1/projects/:projectId/payments
 router.use("/:projectId/payments", projectPaymentsRouter);
+
+// 2b. Kontrak & Termin Pembayaran 100% (US-4: AC-13)
+router.post(
+  "/:projectId/contracts",
+  requireAnyRole("owner", "operasional", "ops"),
+  validateRequest({ params: projectParamSchema, body: createContractSchema }),
+  asyncHandler(financeController.createProjectContract)
+);
+router.get(
+  "/:projectId/payment-terms",
+  validateRequest({ params: projectParamSchema }),
+  asyncHandler(financeController.getProjectTerms)
+);
 
 // 3. Ringkasan Keuangan: /api/v1/projects/:projectId/finance-summary
 router.get(
