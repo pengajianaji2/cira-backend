@@ -103,10 +103,10 @@ npm install
 ### 4. Sinkronisasi Database Prisma
 ```bash
 npx prisma generate
-npx prisma db push
+npx prisma migrate dev
 ```
 
-Untuk deployment berbasis migrasi, jalankan `npx prisma migrate deploy`. Rollback indeks query: `DROP INDEX IF EXISTS` untuk nama indeks yang tercantum pada `prisma/migrations/202611060001_add_query_indexes/migration.sql`; tindakan ini hanya menghapus indeks, bukan data.
+Untuk deployment berbasis migrasi, jalankan `npx prisma migrate deploy`. Database telah di-baseline pada migrasi `0_init` dan disinkronkan dengan migrasi fitur terbaru.
 
 Upload aset dan bukti transfer memakai Cloudinary authenticated delivery. Isi `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, dan `CLOUDINARY_API_SECRET` pada backend `.env`; ketiganya harus diisi bersama. Tidak perlu upload preset, widget, atau env Cloudinary di frontend. File tersimpan di folder `cira-pm/projects/...`; backend menyimpan reference dan mengirim signed URL untuk preview.
 
