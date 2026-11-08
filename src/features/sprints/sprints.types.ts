@@ -17,6 +17,20 @@ export interface UpdateSprintDto {
   endDate?: string;
 }
 
+export interface StartSprintDto {
+  startDate: string;
+  endDate: string;
+}
+
+export interface TaskMoveTarget {
+  taskId: string;
+  targetSprintId: string | null; // null = Backlog
+}
+
+export interface CloseSprintDto {
+  taskMoves?: TaskMoveTarget[];
+}
+
 export interface AssignTasksToSprintDto {
   taskIds: string[];
 }
@@ -43,4 +57,6 @@ export interface ProjectCumulativeProgress {
   totalScopePoints: number;
   completedPoints: number;
   progress: number; // in percent (0 - 100)
+  completedSprintCount?: number;
+  totalSprintCount?: number;
 }
