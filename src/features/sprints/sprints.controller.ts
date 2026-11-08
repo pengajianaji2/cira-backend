@@ -29,13 +29,13 @@ export const sprintsController = {
 
   async startSprint(req: Request, res: Response): Promise<Response> {
     const id = req.params.id as string;
-    const sprint = await sprintsService.startSprint(id, req.user);
-    return sendSuccess(res, `Sprint "${sprint.name}" berhasil dimulai`, sprint);
+    const sprint = await sprintsService.startSprint(id, req.body, req.user);
+    return sendSuccess(res, `Sprint "${sprint.name}" berhasil diaktifkan`, sprint);
   },
 
   async completeSprint(req: Request, res: Response): Promise<Response> {
     const id = req.params.id as string;
-    const result = await sprintsService.completeSprint(id, req.user);
+    const result = await sprintsService.completeSprint(id, req.body, req.user);
     return sendSuccess(res, `Sprint "${result.sprint.name}" berhasil diselesaikan`, result);
   },
 

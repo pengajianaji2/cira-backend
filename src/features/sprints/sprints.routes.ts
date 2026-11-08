@@ -5,8 +5,10 @@ import { asyncHandler } from "../../shared/utils/asyncHandler.js";
 import { sprintsController } from "./sprints.controller.js";
 import {
   assignTasksSchema,
+  closeSprintSchema,
   createSprintSchema,
   sprintIdParamSchema,
+  startSprintSchema,
   updateSprintSchema,
 } from "./sprints.schema.js";
 import { projectIdParamSchema } from "../tasks/tasks.schema.js";
@@ -60,25 +62,35 @@ sprintsRouter.patch(
   asyncHandler(sprintsController.updateSprint)
 );
 
+// BR-SPRINT-02: POST /api/v1/sprints/:id/start dengan startSprintSchema
 sprintsRouter.post(
   "/:id/start",
   requirePermission("sprints.write"),
-  validateRequest({ params: sprintIdParamSchema }),
+  validateRequest({
+    params: sprintIdParamSchema,
+    body: startSprintSchema,
+  }),
   asyncHandler(sprintsController.startSprint)
 );
 
-// AC-11: PATCH /api/v1/sprints/:id/complete (dan POST untuk fleksibilitas)
+// BR-SPRINT-03 s.d. BR-SPRINT-05: Penutupan sprint dengan resolusi task (closeSprintSchema)
 sprintsRouter.patch(
   "/:id/complete",
   requirePermission("sprints.write"),
-  validateRequest({ params: sprintIdParamSchema }),
+  validateRequest({
+    params: sprintIdParamSchema,
+    body: closeSprintSchema,
+  }),
   asyncHandler(sprintsController.completeSprint)
 );
 
 sprintsRouter.post(
   "/:id/complete",
   requirePermission("sprints.write"),
-  validateRequest({ params: sprintIdParamSchema }),
+  validateRequest({
+    params: sprintIdParamSchema,
+    body: closeSprintSchema,
+  }),
   asyncHandler(sprintsController.completeSprint)
 );
 
