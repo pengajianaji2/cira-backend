@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { requireAnyRole, requireAuth } from "../../shared/middlewares/auth.middleware.js";
+import { requireAuth, requirePermission, requirePermissionWhenPresent } from "../../shared/middlewares/auth.middleware.js";
 import { validateRequest } from "../../shared/middlewares/validateRequest.js";
 import { asyncHandler } from "../../shared/utils/asyncHandler.js";
 import { projectActivitiesRouter } from "../activity/activity.routes.js";
@@ -37,6 +37,7 @@ const router = Router();
 
 // Seluruh route proyek membutuhkan autentikasi sesi
 router.use(requireAuth);
+router.use(requirePermission("projects.read"));
 
 // Sub-rute untuk relasi proyek:
 // 1. Kanban Tasks: /api/v1/projects/:projectId/tasks
@@ -51,12 +52,14 @@ router.use("/:projectId/payments", projectPaymentsRouter);
 // 2b. Kontrak & Termin Pembayaran 100% (US-4: AC-13)
 router.post(
   "/:projectId/contracts",
-  requireAnyRole("owner", "operasional", "ops"),
+  requirePermission("finance.write"),
+  requirePermission("projects.contract.update"),
   validateRequest({ params: projectParamSchema, body: createContractSchema }),
   asyncHandler(financeController.createProjectContract)
 );
 router.get(
   "/:projectId/payment-terms",
+  requirePermission("finance.read"),
   validateRequest({ params: projectParamSchema }),
   asyncHandler(financeController.getProjectTerms)
 );
@@ -64,6 +67,7 @@ router.get(
 // 3. Ringkasan Keuangan: /api/v1/projects/:projectId/finance-summary
 router.get(
   "/:projectId/finance-summary",
+  requirePermission("finance.read"),
   validateRequest({ params: projectParamSchema }),
   asyncHandler(financeController.getFinanceSummary)
 );
@@ -86,13 +90,13 @@ router.get(
 );
 router.post(
   "/:projectId/roster",
-  requireAnyRole("owner", "operasional"),
+  requirePermission("roster.manage"),
   validateRequest({ params: projectParamSchema, body: addRosterMemberSchema }),
   asyncHandler(governanceController.addRosterMember)
 );
 router.delete(
   "/:projectId/roster/:userId",
-  requireAnyRole("owner", "operasional"),
+  requirePermission("roster.manage"),
   validateRequest({ params: rosterUserIdParamSchema }),
   asyncHandler(governanceController.removeRosterMember)
 );
@@ -110,33 +114,37 @@ router.get(
 );
 router.post(
   "/:projectId/status-request",
+  requirePermission("status.request"),
   validateRequest({ params: projectParamSchema, body: createStatusRequestSchema }),
   asyncHandler(governanceController.createStatusRequest)
 );
 router.post(
   "/:projectId/status-requests",
+  requirePermission("status.request"),
   validateRequest({ params: projectParamSchema, body: createStatusRequestSchema }),
   asyncHandler(governanceController.createStatusRequest)
 );
 router.post(
   "/:projectId/status-request/:reqId/vote",
+  requirePermission("status.vote"),
   validateRequest({ params: statusRequestIdParamSchema, body: submitVoteSchema }),
   asyncHandler(governanceController.submitVote)
 );
 router.post(
   "/:projectId/status-requests/:reqId/vote",
+  requirePermission("status.vote"),
   validateRequest({ params: statusRequestIdParamSchema, body: submitVoteSchema }),
   asyncHandler(governanceController.submitVote)
 );
 router.post(
   "/:projectId/status-request/:reqId/final-decision",
-  requireAnyRole("owner"),
+  requirePermission("projects.status.change"),
   validateRequest({ params: statusRequestIdParamSchema, body: ownerFinalDecisionSchema }),
   asyncHandler(governanceController.ownerFinalDecision)
 );
 router.post(
   "/:projectId/status-requests/:reqId/final-decision",
-  requireAnyRole("owner"),
+  requirePermission("projects.status.change"),
   validateRequest({ params: statusRequestIdParamSchema, body: ownerFinalDecisionSchema }),
   asyncHandler(governanceController.ownerFinalDecision)
 );
@@ -149,25 +157,25 @@ router.get(
 );
 router.post(
   "/:projectId/repositories",
-  requireAnyRole("owner", "developer"),
+  requirePermission("repositories.write"),
   validateRequest({ params: projectParamSchema, body: createRepoLinkSchema }),
   asyncHandler(governanceController.createRepository)
 );
 router.patch(
   "/:projectId/repositories/:repoId",
-  requireAnyRole("owner", "developer"),
+  requirePermission("repositories.write"),
   validateRequest({ params: repoIdParamSchema, body: updateRepoLinkSchema }),
   asyncHandler(governanceController.updateRepository)
 );
 router.delete(
   "/:projectId/repositories/:repoId",
-  requireAnyRole("owner", "developer"),
+  requirePermission("repositories.write"),
   validateRequest({ params: repoIdParamSchema }),
   asyncHandler(governanceController.deleteRepository)
 );
 router.patch(
   "/:projectId/repo-type",
-  requireAnyRole("owner", "developer"),
+  requirePermission("repositories.write"),
   validateRequest({ params: projectParamSchema, body: updateRepoTypeSchema }),
   asyncHandler(governanceController.updateRepoType)
 );
@@ -185,11 +193,13 @@ router.get(
 );
 router.post(
   "/:projectId/prd/versions",
+  requirePermission("prd.write"),
   validateRequest({ params: projectParamSchema, body: savePrdVersionSchema }),
   asyncHandler(governanceController.savePrdVersion)
 );
 router.post(
   "/:projectId/prd/versions/:versionId/restore",
+  requirePermission("prd.write"),
   validateRequest({ params: prdVersionIdParamSchema }),
   asyncHandler(governanceController.restorePrdVersion)
 );
@@ -199,8 +209,17 @@ router.post(
 // ========================================================
 router.post(
   "/",
+  requirePermission("projects.create"),
   validateRequest({ body: createProjectSchema }),
+  requirePermissionWhenPresent("projects.contract.update", "contractValue"),
   asyncHandler(projectsController.createProject)
+);
+
+router.patch(
+  "/:projectId/contract-value",
+  requirePermission("projects.contract.update"),
+  validateRequest({ params: projectParamSchema, body: createContractSchema.pick({ contractValue: true }) }),
+  asyncHandler(projectsController.updateContractValue),
 );
 
 router.get(
@@ -217,10 +236,12 @@ router.get(
 
 router.patch(
   "/:id",
+  requirePermission("projects.update"),
   validateRequest({
     params: projectIdParamSchema,
     body: updateProjectSchema,
   }),
+  requirePermissionWhenPresent("prd.write", "prdContent"),
   asyncHandler(projectsController.updateProject)
 );
 

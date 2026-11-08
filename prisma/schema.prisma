@@ -17,6 +17,7 @@ model User {
   isActive       Boolean          @default(true)
   isPrimaryOwner Boolean          @default(false)
   avatarUrl      String?
+  tokenVersion   Int              @default(0)
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
@@ -30,6 +31,7 @@ model User {
   decidedStatusChanges     ProjectStatusRequest[] @relation("FinalDecidedStatusChanges")
   statusVotes              ProjectStatusVote[]
   prdVersions              PrdVersion[]
+  passwordResetTokens      PasswordResetToken[]
 
   @@map("users")
 }
@@ -49,6 +51,49 @@ model UserInvitation {
   @@map("user_invitations")
 }
 
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId, expiresAt])
+  @@map("password_reset_tokens")
+}
+
+model RolePolicy {
+  role        String   @id
+  permissions String[] @default([])
+  updatedAt   DateTime @updatedAt
+  updatedById String?
+
+  @@map("role_policies")
+}
+
+model AuthRateLimit {
+  keyHash   String   @id
+  count     Int      @default(0)
+  resetAt   DateTime
+  updatedAt DateTime @updatedAt
+
+  @@map("auth_rate_limits")
+}
+
+model RolePolicyHistory {
+  id                String   @id @default(uuid())
+  role              String
+  addedPermissions  String[] @default([])
+  removedPermissions String[] @default([])
+  actorId           String
+  actorEmail        String
+  createdAt         DateTime @default(now())
+
+  @@index([role, createdAt])
+  @@map("role_policy_history")
+}
+
 model Project {
   id            String        @id @default(uuid())
   name          String
@@ -57,7 +102,7 @@ model Project {
   status        String        @default("lead") // lead, active, completed, cancelled
   repoType      String        @default("monorepo") // monorepo, separate
   progress      Float         @default(0)
-  contractValue Float         @default(0)
+  contractValue Decimal       @default(0) @db.Decimal(20, 2)
   prdContent    String?       @db.Text
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
@@ -220,7 +265,7 @@ model Payment {
   id              String    @id @default(uuid())
   projectId       String
   title           String
-  amount          Float
+  amount          Decimal   @db.Decimal(20, 2)
   status          String    @default("pending") // pending, verified
   dueDate         String?
   notes           String?   @db.Text
@@ -247,7 +292,7 @@ model PaymentTerm {
   termNumber      Int
   title           String
   percentage      Float
-  amount          Float
+  amount          Decimal   @db.Decimal(20, 2)
   triggerType     String    @default("manual") // date, sprint, manual
   triggerSprintId String?
   dueDate         String?

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { requireAnyRole, requireAuth } from "../../shared/middlewares/auth.middleware.js";
+import { requireAuth, requirePermission } from "../../shared/middlewares/auth.middleware.js";
 import { validateRequest } from "../../shared/middlewares/validateRequest.js";
 import { asyncHandler } from "../../shared/utils/asyncHandler.js";
 import { tasksController } from "./tasks.controller.js";
@@ -17,12 +17,14 @@ projectTasksRouter.use(requireAuth);
 
 projectTasksRouter.get(
   "/",
+  requirePermission("projects.read"),
   validateRequest({ params: projectIdParamSchema }),
   asyncHandler(tasksController.getProjectTasks)
 );
 
 projectTasksRouter.post(
   "/",
+  requirePermission("tasks.write"),
   validateRequest({
     params: projectIdParamSchema,
     body: createTaskSchema,
@@ -36,6 +38,7 @@ tasksRouter.use(requireAuth);
 
 tasksRouter.patch(
   "/:id/status",
+  requirePermission("tasks.write"),
   validateRequest({
     params: taskIdParamSchema,
     body: updateTaskStatusSchema,
@@ -45,6 +48,7 @@ tasksRouter.patch(
 
 tasksRouter.patch(
   "/:id",
+  requirePermission("tasks.write"),
   validateRequest({
     params: taskIdParamSchema,
     body: updateTaskSchema,
@@ -55,7 +59,7 @@ tasksRouter.patch(
 // AC-10 / RBAC: Hanya role owner dan operasional yang diizinkan menghapus task
 tasksRouter.delete(
   "/:id",
-  requireAnyRole("owner", "operasional"),
+  requirePermission("tasks.delete"),
   validateRequest({ params: taskIdParamSchema }),
   asyncHandler(tasksController.deleteTask)
 );

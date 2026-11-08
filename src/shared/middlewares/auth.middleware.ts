@@ -3,12 +3,14 @@ import jwt from "jsonwebtoken";
 import { ForbiddenError, UnauthorizedError } from "../errors/AppError.js";
 import { env } from "../../config/env.config.js";
 import { prisma } from "../../config/db.config.js";
+import { policiesService } from "../../features/auth/policies.service.js";
 
 export interface AuthUserPayload {
   id: string;
   email: string;
   name: string;
   roles: string[];
+  tokenVersion?: number;
 }
 
 declare global {
@@ -42,10 +44,10 @@ export const requireAuth = async (
     // Verifikasi keberadaan dan status aktif akun di database (BR-AUTH-12)
     const user = await prisma.user.findUnique({
       where: { id: decoded.id },
-      select: { id: true, email: true, name: true, roles: true, isActive: true },
+      select: { id: true, email: true, name: true, roles: true, isActive: true, tokenVersion: true },
     });
 
-    if (!user || user.isActive === false) {
+    if (!user || user.isActive === false || (decoded.tokenVersion ?? 0) !== user.tokenVersion) {
       return next(
         new UnauthorizedError("Akun Anda telah dinonaktifkan atau tidak ditemukan. Akses ditolak.")
       );
@@ -63,6 +65,28 @@ export const requireAuth = async (
       new UnauthorizedError("Token tidak valid atau sesi telah berakhir.")
     );
   }
+};
+
+export const requirePermission = (permission: string) => async (
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  if (!req.user || !(await policiesService.hasAny(req.user.roles, permission))) {
+    return next(new ForbiddenError("Akses ditolak. Policy role tidak mengizinkan tindakan ini."));
+  }
+  next();
+};
+
+export const requirePermissionWhenPresent = (permission: string, field: string) => async (
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  if (req.body?.[field] !== undefined && (!req.user || !(await policiesService.hasAny(req.user.roles, permission)))) {
+    return next(new ForbiddenError("Akses ditolak. Policy role tidak mengizinkan tindakan ini."));
+  }
+  next();
 };
 
 export const requireAnyRole = (...allowedRoles: string[]) => (

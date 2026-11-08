@@ -1,4 +1,5 @@
-import zlib from "node:zlib";
+import { gzip } from "node:zlib";
+import { promisify } from "node:util";
 import { NotFoundError } from "../../shared/errors/AppError.js";
 import { AuthUserPayload } from "../../shared/middlewares/auth.middleware.js";
 import { projectsRepository } from "./projects.repository.js";
@@ -26,10 +27,11 @@ Latar belakang proyek dan permasalahan utama yang dihadapi oleh klien ${clientNa
 - Milestone 3: Pengujian (QA & Testing) & Final Handover
 `;
 };
+const gzipAsync = promisify(gzip);
 
 export const projectsService = {
   async getAllProjects(filters: ProjectQueryFilter) {
-    return projectsRepository.findMany(filters);
+    return (await projectsRepository.findMany(filters)).map((project) => ({ ...project, contractValue: Number(project.contractValue) }));
   },
 
   async getProjectById(id: string) {
@@ -39,8 +41,10 @@ export const projectsService = {
     }
     return {
       ...project,
+      contractValue: Number(project.contractValue),
       payments: project.payments?.map((payment) => ({
         ...payment,
+        amount: Number(payment.amount),
         proofUrl: payment.proofUrl ? cloudinaryStorage.deliveryUrl(payment.proofUrl) : payment.proofUrl,
       })),
     };
@@ -67,7 +71,7 @@ export const projectsService = {
     }
 
     // Buat snapshot Versi #1 PRD terkompresi GZIP (AC-B2-4)
-    const compressedPrd = zlib.gzipSync(Buffer.from(prdContent, "utf-8"));
+    const compressedPrd = await gzipAsync(Buffer.from(prdContent, "utf-8"));
     const uint8Prd = new Uint8Array(
       compressedPrd.buffer,
       compressedPrd.byteOffset,
@@ -95,13 +99,13 @@ export const projectsService = {
       userRole: user?.roles?.[0],
       metadata: {
         clientName: project.clientName,
-        contractValue: project.contractValue,
+        contractValue: Number(project.contractValue),
         status: project.status,
         repoType: project.repoType,
       },
     });
 
-    return project;
+    return { ...project, contractValue: Number(project.contractValue) };
   },
 
   async updateProject(id: string, dto: UpdateProjectDto, user?: AuthUserPayload) {
@@ -112,29 +116,15 @@ export const projectsService = {
 
     const updated = await projectsRepository.update(id, dto);
 
-    // Audit Log berdasarkan jenis perubahan
-    if (dto.status && dto.status !== existing.status) {
-      await projectsRepository.logActivity({
-        projectId: id,
-        category: "project",
-        action: "STATUS_CHANGE",
-        description: `Status proyek diubah dari "${existing.status}" menjadi "${dto.status}".`,
-        userId: user?.id,
-        userName: user?.name,
-        userRole: user?.roles?.[0],
-        metadata: {
-          previousStatus: existing.status,
-          newStatus: dto.status,
-        },
-      });
-    } else if (dto.prdContent && dto.prdContent !== existing.prdContent) {
+    let loggedPrdChange = false;
+    if (dto.prdContent !== undefined && dto.prdContent !== existing.prdContent) {
       // Simpan riwayat versi PRD terkompresi GZIP jika ada perubahan teks PRD
       const latest = await prisma.prdVersion.findFirst({
         where: { projectId: id },
         orderBy: { versionNumber: "desc" },
       });
       const nextVersionNumber = (latest?.versionNumber ?? 0) + 1;
-      const compressedPrd = zlib.gzipSync(Buffer.from(dto.prdContent, "utf-8"));
+      const compressedPrd = await gzipAsync(Buffer.from(dto.prdContent, "utf-8"));
       const uint8Prd = new Uint8Array(
         compressedPrd.buffer,
         compressedPrd.byteOffset,
@@ -165,7 +155,10 @@ export const projectsService = {
           charCount: dto.prdContent.length,
         },
       });
-    } else {
+      loggedPrdChange = true;
+    }
+    const otherChanges = Object.fromEntries(Object.entries(dto).filter(([key]) => key !== "prdContent"));
+    if (Object.keys(otherChanges).length || !loggedPrdChange) {
       await projectsRepository.logActivity({
         projectId: id,
         category: "project",
@@ -174,10 +167,27 @@ export const projectsService = {
         userId: user?.id,
         userName: user?.name,
         userRole: user?.roles?.[0],
-        metadata: dto,
+        metadata: otherChanges,
       });
     }
 
-    return updated;
+    return { ...updated, contractValue: Number(updated.contractValue) };
+  },
+
+  async updateContractValue(id: string, contractValue: number, user?: AuthUserPayload) {
+    const existing = await projectsRepository.findById(id);
+    if (!existing) throw new NotFoundError(`Proyek dengan ID '${id}' tidak ditemukan.`);
+    const updated = await projectsRepository.updateContractValue(id, contractValue);
+    await projectsRepository.logActivity({
+      projectId: id,
+      category: "finance",
+      action: "CONTRACT_VALUE_CHANGE",
+      description: `Nilai kontrak proyek diperbarui.`,
+      userId: user?.id,
+      userName: user?.name,
+      userRole: user?.roles?.[0],
+      metadata: { previousValue: Number(existing.contractValue), newValue: contractValue },
+    });
+    return { contractValue: Number(updated.contractValue) };
   },
 };

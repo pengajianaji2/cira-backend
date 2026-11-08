@@ -164,6 +164,10 @@ export const projectsRepository = {
     });
   },
 
+  async updateContractValue(id: string, contractValue: number) {
+    return prisma.project.update({ where: { id }, data: { contractValue } });
+  },
+
   async logActivity(data: {
     projectId: string;
     category: string;

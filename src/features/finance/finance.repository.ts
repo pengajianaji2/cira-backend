@@ -132,6 +132,26 @@ export const financeRepository = {
     });
   },
 
+  async issueInvoiceAtomically(
+    id: string,
+    year: number,
+    termNumber: number,
+    data: { invoiceIssuedAt: Date; status: string; isLocked: boolean; invoicePdfUrl: string | null; notes: string | null },
+  ) {
+    return prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`cira-invoice-${year}`}))`;
+      const count = await tx.paymentTerm.count({ where: { invoiceNumber: { startsWith: `INV-${year}-` } } });
+      const invoiceNumber = `INV-${year}-${String(count + 1).padStart(3, "0")}`;
+      const changed = await tx.paymentTerm.updateMany({
+        where: { id, status: "ready", isLocked: false, invoiceNumber: null },
+        data: { ...data, invoiceNumber: `${invoiceNumber}/T${termNumber}` },
+      });
+      if (changed.count !== 1) return null;
+      const updated = await tx.paymentTerm.findUnique({ where: { id }, include: termIncludes });
+      return { invoiceNumber: `${invoiceNumber}/T${termNumber}`, updated };
+    });
+  },
+
   // Backward-compatible Payment queries
   async findByProjectId(projectId: string) {
     return prisma.payment.findMany({

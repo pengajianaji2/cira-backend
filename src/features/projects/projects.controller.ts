@@ -24,4 +24,9 @@ export const projectsController = {
     const updated = await projectsService.updateProject(id, req.body, req.user);
     return sendSuccess(res, "Data proyek berhasil diperbarui", updated);
   },
+
+  async updateContractValue(req: Request, res: Response): Promise<Response> {
+    const updated = await projectsService.updateContractValue(req.params.projectId as string, req.body.contractValue, req.user);
+    return sendSuccess(res, "Nilai kontrak berhasil diperbarui.", { contractValue: updated.contractValue });
+  },
 };

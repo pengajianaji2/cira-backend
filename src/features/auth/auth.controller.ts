@@ -28,10 +28,11 @@ export const authController = {
       partitioned: env.NODE_ENV === "production",
     });
 
-    return sendSuccess(res, "Login berhasil.", { user, token });
+    return sendSuccess(res, "Login berhasil.", { user });
   },
 
-  async logout(_req: Request, res: Response): Promise<Response> {
+  async logout(req: Request, res: Response): Promise<Response> {
+    await authService.logout(req.user!.id);
     res.clearCookie(COOKIE_NAME, {
       httpOnly: true,
       secure: env.NODE_ENV === "production",
@@ -57,21 +58,35 @@ export const authController = {
     return sendSuccess(res, "Password berhasil diperbarui.", null);
   },
 
+  async uploadAvatar(req: Request, res: Response): Promise<Response> {
+    const user = await authService.uploadAvatar(req.user!.id, req.body.dataUrl);
+    return sendSuccess(res, "Foto profil berhasil diperbarui.", { user });
+  },
+
+  async forgotPassword(req: Request, res: Response): Promise<Response> {
+    await authService.requestPasswordReset(req.body.email);
+    return sendSuccess(res, "Jika email terdaftar, tautan reset password akan dikirim.", null);
+  },
+
+  async resetPassword(req: Request, res: Response): Promise<Response> {
+    await authService.resetPassword(req.body.token, req.body.newPassword);
+    return sendSuccess(res, "Password berhasil diatur ulang. Silakan masuk kembali.", null);
+  },
+
   // === CONTROLLER RBAC & UNDANGAN (US-1) ===
 
   async invite(req: Request, res: Response): Promise<Response> {
     const invitation = await authService.inviteUser(req.user!.id, req.body);
     return sendSuccess(
       res,
-      "Tautan undangan berhasil diterbitkan dan berlaku selama 24 jam.",
+      "Undangan berhasil dikirim melalui email dan berlaku selama 24 jam.",
       { invitation },
       201
     );
   },
 
-  async getInviteInfo(req: Request, res: Response): Promise<Response> {
-    const token = req.params.token as string;
-    const inviteInfo = await authService.getInviteInfo(token);
+  async verifyInvite(req: Request, res: Response): Promise<Response> {
+    const inviteInfo = await authService.getInviteInfo(req.body.token);
     return sendSuccess(res, "Informasi undangan berhasil dimuat.", inviteInfo);
   },
 
@@ -89,7 +104,7 @@ export const authController = {
     return sendSuccess(
       res,
       "Aktivasi akun berhasil. Selamat datang di Cira PM!",
-      { user, token },
+      { user },
       201
     );
   },

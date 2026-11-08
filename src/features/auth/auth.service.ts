@@ -20,6 +20,8 @@ import {
   UnauthorizedError,
 } from "../../shared/errors/AppError.js";
 import { env } from "../../config/env.config.js";
+import { emailService } from "../../shared/services/email.service.js";
+import { cloudinaryStorage } from "../assets/cloudinary.service.js";
 
 const toUserResponse = (user: any): UserResponse => ({
   id: user.id,
@@ -30,14 +32,14 @@ const toUserResponse = (user: any): UserResponse => ({
   instagram: user.instagram ?? null,
   isActive: user.isActive ?? true,
   isPrimaryOwner: user.isPrimaryOwner ?? false,
-  avatarUrl: user.avatarUrl ?? null,
+  avatarUrl: user.avatarUrl ? cloudinaryStorage.deliveryUrl(user.avatarUrl) : null,
   createdAt: user.createdAt instanceof Date ? user.createdAt.toISOString() : user.createdAt,
   updatedAt: user.updatedAt instanceof Date ? user.updatedAt.toISOString() : user.updatedAt,
 });
 
 export const authService = {
   async login(input: LoginInput): Promise<{ token: string; user: UserResponse }> {
-    const user = await authRepository.findByEmail(input.email);
+    const user = await authRepository.findByEmail(input.email.toLowerCase());
     if (!user) {
       throw new UnauthorizedError("Email atau password tidak sesuai.");
     }
@@ -63,6 +65,7 @@ export const authService = {
         email: user.email,
         name: user.name,
         roles: user.roles,
+        tokenVersion: user.tokenVersion,
       },
       env.JWT_SECRET,
       signOptions
@@ -83,14 +86,15 @@ export const authService = {
   },
 
   async updateProfile(userId: string, input: ProfileInput): Promise<UserResponse> {
-    const existing = await authRepository.findByEmail(input.email);
+    const email = input.email.toLowerCase();
+    const existing = await authRepository.findByEmail(email);
     if (existing && existing.id !== userId) {
       throw new ConflictError("Email ini telah digunakan oleh akun lain.");
     }
 
     const updated = await authRepository.updateProfile(userId, {
       name: input.name,
-      email: input.email,
+      email,
       whatsapp: input.whatsapp,
       instagram: input.instagram?.replace(/^@/, ""),
     });
@@ -113,6 +117,52 @@ export const authService = {
     await authRepository.updatePassword(userId, newHash);
   },
 
+  async logout(userId: string): Promise<void> {
+    await authRepository.revokeSessions(userId);
+  },
+
+  async uploadAvatar(userId: string, dataUrl: string): Promise<UserResponse> {
+    const user = await authRepository.findById(userId);
+    if (!user) throw new NotFoundError("Pengguna tidak ditemukan.");
+    const uploaded = await cloudinaryStorage.upload(dataUrl, `cira-pm/avatars/${userId}`);
+    try {
+      const updated = await authRepository.updateAvatar(userId, uploaded);
+      if (user.avatarUrl) await cloudinaryStorage.destroy(user.avatarUrl).catch(() => undefined);
+      return toUserResponse(updated);
+    } catch (error) {
+      await cloudinaryStorage.destroy(uploaded).catch(() => undefined);
+      throw error;
+    }
+  },
+
+  async requestPasswordReset(email: string): Promise<void> {
+    const user = await authRepository.findByEmail(email.toLowerCase());
+    if (!user || !user.isActive) return;
+    const token = crypto.randomBytes(32).toString("hex");
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+    await authRepository.createPasswordResetToken(user.id, tokenHash, expiresAt);
+    const baseUrl = (env.APP_PUBLIC_URL || env.FRONTEND_URL).replace(/\/$/, "");
+    const link = `${baseUrl}/reset-password?token=${encodeURIComponent(token)}`;
+    try {
+      await emailService.send(user.email, "Atur ulang password Cira PM", emailService.passwordResetHtml(link, 30), emailService.passwordResetText(link, 30));
+    } catch (error) {
+      await authRepository.deletePasswordResetToken(tokenHash);
+      throw error;
+    }
+  },
+
+  async resetPassword(token: string, newPassword: string): Promise<void> {
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+    const reset = await authRepository.findPasswordResetToken(tokenHash);
+    if (!reset || reset.expiresAt <= new Date() || !reset.user.isActive) {
+      throw new BadRequestError("Tautan reset tidak valid atau telah kedaluwarsa.");
+    }
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    const consumed = await authRepository.consumePasswordReset(tokenHash, reset.userId, passwordHash);
+    if (!consumed) throw new BadRequestError("Tautan reset tidak valid atau telah digunakan.");
+  },
+
   // === FITUR RBAC & UNDANGAN (US-1) ===
 
   async inviteUser(
@@ -129,35 +179,51 @@ export const authService = {
       throw new BadRequestError("Role undangan hanya boleh developer atau operasional.");
     }
 
-    const existingUser = await authRepository.findByEmail(input.email);
+    const existingUser = await authRepository.findByEmail(input.email.toLowerCase());
     if (existingUser && existingUser.isActive) {
       throw new ConflictError("Pengguna dengan email ini sudah aktif terdaftar.");
     }
 
     // Buat token kriptografis 24 jam (BR-AUTH-07, BR-AUTH-08)
     const token = crypto.randomBytes(32).toString("hex");
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
     const invitation = await authRepository.createInvitation({
       email: input.email.toLowerCase(),
       role: input.role,
-      token,
+      token: tokenHash,
       expiresAt,
       invitedById: inviterId,
     });
+
+    const baseUrl = (env.APP_PUBLIC_URL || env.FRONTEND_URL).replace(/\/$/, "");
+    const link = `${baseUrl}/activate?token=${encodeURIComponent(token)}`;
+    try {
+      await emailService.send(
+        invitation.email,
+        "Undangan bergabung ke Cira PM",
+        emailService.invitationHtml("", link, invitation.role, invitation.expiresAt.toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })),
+        emailService.invitationText("", link, invitation.role, invitation.expiresAt.toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })),
+      );
+    } catch (error) {
+      await authRepository.deleteInvitationById(invitation.id);
+      throw error;
+    }
 
     return {
       id: invitation.id,
       email: invitation.email,
       role: invitation.role,
-      token: invitation.token,
       expiresAt: invitation.expiresAt.toISOString(),
       createdAt: invitation.createdAt.toISOString(),
+      emailSent: true,
     };
   },
 
   async getInviteInfo(token: string) {
-    const invitation = await authRepository.findInvitationByToken(token);
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+    const invitation = await authRepository.findInvitationByToken(tokenHash, token);
     if (!invitation) {
       throw new NotFoundError("Tautan undangan tidak valid.");
     }
@@ -177,7 +243,8 @@ export const authService = {
   async activateUser(
     input: ActivateUserInput
   ): Promise<{ token: string; user: UserResponse }> {
-    const invitation = await authRepository.findInvitationByToken(input.token);
+    const tokenHash = crypto.createHash("sha256").update(input.token).digest("hex");
+    const invitation = await authRepository.findInvitationByToken(tokenHash, input.token);
     if (!invitation) {
       throw new NotFoundError("Tautan aktivasi tidak valid.");
     }
@@ -204,7 +271,7 @@ export const authService = {
     });
 
     // Hapus token undangan sekali pakai (BR-AUTH-07)
-    await authRepository.deleteInvitationByToken(input.token);
+    await authRepository.deleteInvitationByToken(tokenHash, input.token);
 
     // Langsung terbitkan sesi token untuk kemudahan login
     const sessionToken = jwt.sign(
@@ -213,6 +280,7 @@ export const authService = {
         email: activatedUser.email,
         name: activatedUser.name,
         roles: activatedUser.roles,
+        tokenVersion: activatedUser.tokenVersion,
       },
       env.JWT_SECRET,
       { expiresIn: env.JWT_EXPIRES_IN as unknown as SignOptions["expiresIn"] }

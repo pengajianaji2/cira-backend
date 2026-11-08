@@ -39,9 +39,9 @@ export interface UserInvitationResponse {
   id: string;
   email: string;
   role: string;
-  token: string;
   expiresAt: string;
   createdAt: string;
+  emailSent: boolean;
 }
 
 export interface ActivateUserInput {

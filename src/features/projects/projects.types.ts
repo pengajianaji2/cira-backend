@@ -14,8 +14,6 @@ export interface UpdateProjectDto {
   name?: string;
   clientName?: string;
   clientContact?: string;
-  status?: ProjectStatus;
-  contractValue?: number;
   prdContent?: string;
   repoType?: ProjectRepoType;
 }

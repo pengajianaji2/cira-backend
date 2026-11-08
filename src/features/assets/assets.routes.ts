@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { requireAuth } from "../../shared/middlewares/auth.middleware.js";
+import { requireAuth, requirePermission } from "../../shared/middlewares/auth.middleware.js";
 import { validateRequest } from "../../shared/middlewares/validateRequest.js";
 import { asyncHandler } from "../../shared/utils/asyncHandler.js";
 import { projectIdParamSchema, taskIdParamSchema } from "../tasks/tasks.schema.js";
@@ -12,12 +12,14 @@ projectAssetsRouter.use(requireAuth);
 
 projectAssetsRouter.get(
   "/",
+  requirePermission("projects.read"),
   validateRequest({ params: projectIdParamSchema }),
   asyncHandler(assetsController.getProjectAssets)
 );
 
 projectAssetsRouter.post(
   "/",
+  requirePermission("assets.write"),
   validateRequest({
     params: projectIdParamSchema,
     body: createDesignAssetSchema,
@@ -31,6 +33,7 @@ assetsRouter.use(requireAuth);
 
 assetsRouter.delete(
   "/:id",
+  requirePermission("assets.write"),
   validateRequest({ params: taskIdParamSchema }),
   asyncHandler(assetsController.deleteAsset)
 );

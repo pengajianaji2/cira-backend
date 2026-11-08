@@ -113,6 +113,20 @@ export const sprintsRepository = {
     });
   },
 
+  async startSprintAtomically(id: string, projectId: string, startDate: Date) {
+    return prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`sprint-start-${projectId}`}))`;
+      const active = await tx.sprint.findFirst({ where: { projectId, status: "active" }, select: { id: true } });
+      if (active && active.id !== id) return null;
+      const changed = await tx.sprint.updateMany({
+        where: { id, projectId, status: "planning" },
+        data: { status: "active", startDate },
+      });
+      if (changed.count !== 1) return null;
+      return tx.sprint.findUnique({ where: { id }, include: { tasks: true } });
+    });
+  },
+
   async delete(id: string) {
     return prisma.sprint.delete({
       where: { id },
@@ -127,10 +141,11 @@ export const sprintsRepository = {
     });
   },
 
-  async assignTasksToSprint(sprintId: string, taskIds: string[]) {
+  async assignTasksToSprint(sprintId: string, taskIds: string[], projectId: string) {
     return prisma.task.updateMany({
       where: {
         id: { in: taskIds },
+        projectId,
       },
       data: {
         sprintId,

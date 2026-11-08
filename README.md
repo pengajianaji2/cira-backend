@@ -219,3 +219,17 @@ Format respons error:
   "error": [ ... ]
 }
 ```
+# Environment setup: Gmail SMTP, profile photos, and authorization
+
+1. Copy `.env.example` to `.env`. Keep credentials out of source control.
+2. Configure transactional email with Gmail App Password. Enable 2-Step Verification on the Google Account and create an App Password. In the backend environment, fill only `GMAIL_USER` with the Gmail address and `GMAIL_APP_PASSWORD` with the App Password (not the normal Google password). Nodemailer uses its built-in Gmail preset, and the sender is automatically `Cira PM <GMAIL_USER>`; no domain, SMTP host, or port configuration is needed. `APP_PUBLIC_URL` must be the public frontend origin for invitation and reset links. Gmail is intended here for low-volume transactional email; Google may block suspicious sign-ins or enforce account sending limits.
+3. Set `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` together. These credentials are server-only. Profile images accept PNG/JPEG/WebP up to 2 MB.
+4. Apply database migrations with `npx prisma migrate deploy`, then regenerate the Prisma client with `npx prisma generate`.
+
+Password reset links expire after 30 minutes and are single-use. Invitation links expire after 24 hours and are stored as SHA-256 hashes. Login, invitation verification, and password-reset requests use a PostgreSQL-backed shared rate limit.
+
+## Role policies
+
+The owner can edit capabilities for `owner`, `developer`, and `operasional` at `/access-policies`. Server middleware reads the saved policy for every protected request. Multiple roles grant the union of their capabilities. The `policies.manage` capability is mandatory for the owner role to prevent administrative lockout. User/role administration remains owner-only. Policy defaults are included in the migration and are also used as runtime fallbacks.
+
+The generic project patch endpoint cannot change project status or contract value. Status updates must use the project approval workflow; contract value changes use dedicated finance-policy protected operations. Activity history is written by backend domain services.

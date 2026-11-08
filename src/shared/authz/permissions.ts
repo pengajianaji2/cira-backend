@@ -1,0 +1,33 @@
+export const PERMISSION_CATALOG = [
+  { key: "projects.read", label: "Lihat proyek", group: "Proyek" },
+  { key: "projects.create", label: "Buat proyek", group: "Proyek" },
+  { key: "projects.update", label: "Ubah informasi proyek", group: "Proyek" },
+  { key: "projects.status.change", label: "Menyetujui perubahan status", group: "Proyek" },
+  { key: "projects.contract.update", label: "Ubah nilai kontrak", group: "Keuangan" },
+  { key: "finance.read", label: "Lihat informasi keuangan", group: "Keuangan" },
+  { key: "finance.write", label: "Kelola pembayaran, termin, dan invoice", group: "Keuangan" },
+  { key: "tasks.write", label: "Buat dan ubah task", group: "Task & Sprint" },
+  { key: "tasks.delete", label: "Hapus task", group: "Task & Sprint" },
+  { key: "sprints.write", label: "Kelola sprint", group: "Task & Sprint" },
+  { key: "sprints.delete", label: "Hapus sprint", group: "Task & Sprint" },
+  { key: "roster.manage", label: "Kelola anggota proyek", group: "Proyek" },
+  { key: "status.request", label: "Ajukan perubahan status", group: "Proyek" },
+  { key: "status.vote", label: "Memberi suara perubahan status", group: "Proyek" },
+  { key: "repositories.write", label: "Kelola tautan repository", group: "Proyek" },
+  { key: "prd.write", label: "Ubah dan pulihkan versi PRD", group: "Proyek" },
+  { key: "assets.write", label: "Unggah dan hapus aset", group: "Aset" },
+  { key: "activities.read", label: "Lihat riwayat aktivitas", group: "Proyek" },
+  { key: "directory.read", label: "Lihat direktori tim", group: "Tim" },
+  { key: "users.invite", label: "Undang anggota", group: "Administrasi" },
+  { key: "users.manage", label: "Ubah role dan status anggota", group: "Administrasi" },
+  { key: "policies.manage", label: "Kelola policy role (wajib untuk owner)", group: "Administrasi" },
+] as const;
+
+export type PermissionKey = (typeof PERMISSION_CATALOG)[number]["key"];
+
+const all = PERMISSION_CATALOG.map(({ key }) => key) as PermissionKey[];
+export const DEFAULT_ROLE_POLICIES: Record<string, PermissionKey[]> = {
+  owner: all,
+  developer: ["projects.read", "projects.create", "projects.update", "tasks.write", "sprints.write", "repositories.write", "prd.write", "assets.write", "activities.read", "directory.read", "status.request", "status.vote"],
+  operasional: ["projects.read", "finance.read", "finance.write", "projects.contract.update", "tasks.write", "sprints.write", "roster.manage", "status.request", "status.vote", "assets.write", "activities.read", "directory.read"],
+};

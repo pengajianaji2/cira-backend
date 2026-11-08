@@ -18,7 +18,7 @@ export const activityRepository = {
       where.category = filters.category;
     }
 
-    return prisma.activityLog.findMany({
+    const activities = await prisma.activityLog.findMany({
       where,
       orderBy: { createdAt: "desc" },
       take: filters.limit || 50,
@@ -33,6 +33,22 @@ export const activityRepository = {
         },
       },
     });
+
+    // User relations are optional because an account may be deleted or an
+    // event may be system-generated. Keep the timeline contract stable by
+    // falling back to the actor snapshot stored on the activity row.
+    return activities.map(({ user, userName, userRole, ...activity }) => ({
+      ...activity,
+      user: user
+        ? { ...user, role: userRole || "Anggota" }
+        : {
+            id: null,
+            name: userName || "Pengguna",
+            email: null,
+            avatarUrl: null,
+            role: userRole || "Anggota",
+          },
+    }));
   },
 
   async create(

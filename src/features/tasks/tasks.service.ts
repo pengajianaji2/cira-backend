@@ -46,6 +46,9 @@ export const tasksService = {
       if (!sprint) {
         throw new NotFoundError(`Sprint dengan ID '${dto.sprintId}' tidak ditemukan.`);
       }
+      if (sprint.projectId !== projectId) {
+        throw new BadRequestError("Sprint harus berasal dari proyek yang sama dengan task.");
+      }
 
       // Jika sprint berstatus aktif, wajib memiliki assignee dan Fibonacci points
       if (sprint.status === "active") {
@@ -151,7 +154,10 @@ export const tasksService = {
     const targetSprintId = dto.sprintId !== undefined ? dto.sprintId : existing.sprintId;
     if (targetSprintId) {
       const sprint = await sprintsRepository.findById(targetSprintId);
-      if (sprint && sprint.status === "active") {
+      if (!sprint || sprint.projectId !== existing.projectId) {
+        throw new BadRequestError("Sprint harus berasal dari proyek yang sama dengan task.");
+      }
+      if (sprint.status === "active") {
         const finalAssigneeId = dto.assigneeId !== undefined ? dto.assigneeId : existing.assigneeId;
         const finalPoints = dto.storyPoints !== undefined ? dto.storyPoints : existing.storyPoints;
 

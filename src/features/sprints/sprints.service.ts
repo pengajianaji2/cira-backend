@@ -153,10 +153,12 @@ export const sprintsService = {
       }
     }
 
-    const updated = await sprintsRepository.update(id, {
-      status: "active",
-      startDate: sprint.startDate ? sprint.startDate.toISOString() : new Date().toISOString(),
-    });
+    const updated = await sprintsRepository.startSprintAtomically(
+      id,
+      sprint.projectId,
+      sprint.startDate ?? new Date(),
+    );
+    if (!updated) throw new BadRequestError("Sprint lain sudah dimulai atau status sprint berubah. Muat ulang data.");
 
     await sprintsRepository.logActivity({
       projectId: sprint.projectId,
@@ -303,6 +305,9 @@ export const sprintsService = {
     if (tasks.length !== dto.taskIds.length) {
       throw new NotFoundError("Beberapa task yang dipilih tidak ditemukan.");
     }
+    if (tasks.some((task) => task.projectId !== sprint.projectId)) {
+      throw new BadRequestError("Semua task harus berasal dari proyek yang sama dengan sprint.");
+    }
 
     // Jika sprint aktif, validasi bahwa task yang dimasukkan sudah memiliki assignee dan valid story points
     if (sprint.status === "active") {
@@ -320,7 +325,7 @@ export const sprintsService = {
       }
     }
 
-    await sprintsRepository.assignTasksToSprint(sprintId, dto.taskIds);
+    await sprintsRepository.assignTasksToSprint(sprintId, dto.taskIds, sprint.projectId);
 
     // Rekalkulasi progres proyek jika sprint berstatus completed
     if (sprint.status === "completed") {

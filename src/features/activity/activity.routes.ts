@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { requireAuth } from "../../shared/middlewares/auth.middleware.js";
+import { requireAuth, requirePermission } from "../../shared/middlewares/auth.middleware.js";
 import { validateRequest } from "../../shared/middlewares/validateRequest.js";
 import { asyncHandler } from "../../shared/utils/asyncHandler.js";
 import { projectIdParamSchema } from "../tasks/tasks.schema.js";
@@ -15,6 +15,7 @@ projectActivitiesRouter.use(requireAuth);
 
 projectActivitiesRouter.get(
   "/",
+  requirePermission("activities.read"),
   validateRequest({
     params: projectIdParamSchema,
     query: activityFilterQuerySchema,
@@ -22,13 +23,6 @@ projectActivitiesRouter.get(
   asyncHandler(activityController.getProjectActivities)
 );
 
-projectActivitiesRouter.post(
-  "/",
-  validateRequest({
-    params: projectIdParamSchema,
-    body: createActivitySchema,
-  }),
-  asyncHandler(activityController.logActivity)
-);
+// Activity history is created only by trusted domain services, never supplied by a browser client.
 
 export default projectActivitiesRouter;

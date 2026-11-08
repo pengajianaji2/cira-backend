@@ -6,10 +6,13 @@ import tasksRouter from "../features/tasks/tasks.routes.js";
 import sprintsRouter from "../features/sprints/sprints.routes.js";
 import paymentsRouter, { paymentTermsRouter } from "../features/finance/finance.routes.js";
 import assetsRouter from "../features/assets/assets.routes.js";
+import policiesRouter from "../features/auth/policies.routes.js";
+import { prisma } from "../config/db.config.js";
 
 const apiRouter = Router();
 
 apiRouter.use("/auth", authRoutes);
+apiRouter.use("/policies", policiesRouter);
 apiRouter.use("/users", usersRoutes);
 apiRouter.use("/projects", projectRoutes);
 apiRouter.use("/tasks", tasksRouter);
@@ -24,6 +27,15 @@ apiRouter.get("/health", (_req, res) => {
     service: "cira-pm-backend",
     timestamp: new Date().toISOString(),
   });
+});
+
+apiRouter.get("/ready", async (_req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    return res.status(200).json({ status: "ready", service: "cira-pm-backend" });
+  } catch {
+    return res.status(503).json({ status: "not_ready", service: "cira-pm-backend" });
+  }
 });
 
 export default apiRouter;

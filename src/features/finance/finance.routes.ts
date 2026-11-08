@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { requireAnyRole, requireAuth } from "../../shared/middlewares/auth.middleware.js";
+import { requireAuth, requirePermission } from "../../shared/middlewares/auth.middleware.js";
 import { validateRequest } from "../../shared/middlewares/validateRequest.js";
 import { asyncHandler } from "../../shared/utils/asyncHandler.js";
 import { projectIdParamSchema } from "../tasks/tasks.schema.js";
@@ -18,16 +18,17 @@ import {
 // Sub-rute proyek: /api/v1/projects/:projectId/payments
 export const projectPaymentsRouter = Router({ mergeParams: true });
 projectPaymentsRouter.use(requireAuth);
-projectPaymentsRouter.use(requireAnyRole("owner", "operasional", "ops"));
 
 projectPaymentsRouter.get(
   "/",
+  requirePermission("finance.read"),
   validateRequest({ params: projectIdParamSchema }),
   asyncHandler(financeController.getProjectPayments)
 );
 
 projectPaymentsRouter.post(
   "/",
+  requirePermission("finance.write"),
   validateRequest({
     params: projectIdParamSchema,
     body: createPaymentSchema,
@@ -38,10 +39,9 @@ projectPaymentsRouter.post(
 // Rute langsung pembayaran: /api/v1/payments/:id
 export const paymentsRouter = Router();
 paymentsRouter.use(requireAuth);
-paymentsRouter.use(requireAnyRole("owner", "operasional", "ops"));
-
 paymentsRouter.patch(
   "/:id/verify",
+  requirePermission("finance.write"),
   validateRequest({
     params: paymentIdParamSchema,
     body: verifyPaymentSchema,
@@ -51,6 +51,7 @@ paymentsRouter.patch(
 
 paymentsRouter.patch(
   "/:id",
+  requirePermission("finance.write"),
   validateRequest({
     params: paymentIdParamSchema,
     body: updatePaymentSchema,
@@ -60,6 +61,7 @@ paymentsRouter.patch(
 
 paymentsRouter.delete(
   "/:id",
+  requirePermission("finance.write"),
   validateRequest({ params: paymentIdParamSchema }),
   asyncHandler(financeController.deletePayment)
 );
@@ -69,10 +71,10 @@ paymentsRouter.delete(
 // =========================================================================
 export const paymentTermsRouter = Router();
 paymentTermsRouter.use(requireAuth);
-paymentTermsRouter.use(requireAnyRole("owner", "operasional", "ops"));
 
 paymentTermsRouter.get(
   "/:id",
+  requirePermission("finance.read"),
   validateRequest({ params: paymentTermIdParamSchema }),
   asyncHandler(financeController.getTermById)
 );
@@ -80,6 +82,7 @@ paymentTermsRouter.get(
 // AC-14: Upload BAST dan tandai status siap ditagih (ready)
 paymentTermsRouter.patch(
   "/:id/ready",
+  requirePermission("finance.write"),
   validateRequest({
     params: paymentTermIdParamSchema,
     body: uploadBastSchema,
@@ -90,6 +93,7 @@ paymentTermsRouter.patch(
 // AC-15: Terbitkan invoice resmi bernomor unik INV-YYYY-NNN/Tn dan kunci termin
 paymentTermsRouter.post(
   "/:id/invoice",
+  requirePermission("finance.write"),
   validateRequest({
     params: paymentTermIdParamSchema,
     body: issueInvoiceSchema,
@@ -99,6 +103,7 @@ paymentTermsRouter.post(
 
 paymentTermsRouter.delete(
   "/:id",
+  requirePermission("finance.write"),
   validateRequest({ params: paymentTermIdParamSchema }),
   asyncHandler(financeController.deleteTerm)
 );

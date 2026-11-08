@@ -10,6 +10,9 @@ const envSchema = z.object({
     .transform((val) => parseInt(val, 10)),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   FRONTEND_URL: z.string().default("http://localhost:3000"),
+  APP_PUBLIC_URL: z.preprocess((value) => value === "" ? undefined : value, z.string().url().optional()),
+  GMAIL_USER: z.preprocess((value) => value === "" ? undefined : value, z.string().email().optional()),
+  GMAIL_APP_PASSWORD: z.preprocess((value) => value === "" ? undefined : value, z.string().optional()),
   DATABASE_URL: z.string().optional().default("postgresql://postgres:postgres@localhost:5432/postgres"),
   DIRECT_URL: z.string().optional(),
   JWT_SECRET: z
@@ -39,6 +42,10 @@ if (!parsed.success) {
 
 export const env = parsed.data;
 
+if (Boolean(env.GMAIL_USER) !== Boolean(env.GMAIL_APP_PASSWORD)) {
+  throw new Error("GMAIL_USER dan GMAIL_APP_PASSWORD harus diisi bersama.");
+}
+
 const cloudinaryValues = [env.CLOUDINARY_CLOUD_NAME, env.CLOUDINARY_API_KEY, env.CLOUDINARY_API_SECRET];
 if (cloudinaryValues.some(Boolean) && !cloudinaryValues.every(Boolean)) {
   throw new Error("CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, dan CLOUDINARY_API_SECRET harus diisi bersama.");
@@ -49,4 +56,9 @@ if (env.NODE_ENV === "production") {
   if (frontendOrigin.protocol !== "https:" || ["localhost", "127.0.0.1", "::1"].includes(frontendOrigin.hostname)) {
     throw new Error("FRONTEND_URL production harus berupa origin HTTPS publik.");
   }
+  if (env.APP_PUBLIC_URL && new URL(env.APP_PUBLIC_URL).protocol !== "https:") {
+    throw new Error("APP_PUBLIC_URL production harus menggunakan HTTPS.");
+  }
+} else if (env.APP_PUBLIC_URL && new URL(env.APP_PUBLIC_URL).origin !== new URL(env.FRONTEND_URL).origin) {
+  console.warn("FRONTEND_URL dan APP_PUBLIC_URL berbeda. Pastikan link undangan mengarah ke frontend yang memakai backend/database environment ini.");
 }

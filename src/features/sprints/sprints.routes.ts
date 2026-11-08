@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { requireAnyRole, requireAuth } from "../../shared/middlewares/auth.middleware.js";
+import { requireAuth, requirePermission } from "../../shared/middlewares/auth.middleware.js";
 import { validateRequest } from "../../shared/middlewares/validateRequest.js";
 import { asyncHandler } from "../../shared/utils/asyncHandler.js";
 import { sprintsController } from "./sprints.controller.js";
@@ -17,13 +17,14 @@ projectSprintsRouter.use(requireAuth);
 
 projectSprintsRouter.get(
   "/",
+  requirePermission("projects.read"),
   validateRequest({ params: projectIdParamSchema }),
   asyncHandler(sprintsController.getProjectSprints)
 );
 
 projectSprintsRouter.post(
   "/",
-  requireAnyRole("owner", "operasional", "developer"),
+  requirePermission("sprints.write"),
   validateRequest({
     params: projectIdParamSchema,
     body: createSprintSchema,
@@ -33,6 +34,7 @@ projectSprintsRouter.post(
 
 projectSprintsRouter.get(
   "/progress",
+  requirePermission("projects.read"),
   validateRequest({ params: projectIdParamSchema }),
   asyncHandler(sprintsController.getProjectProgress)
 );
@@ -43,13 +45,14 @@ sprintsRouter.use(requireAuth);
 
 sprintsRouter.get(
   "/:id",
+  requirePermission("projects.read"),
   validateRequest({ params: sprintIdParamSchema }),
   asyncHandler(sprintsController.getSprintById)
 );
 
 sprintsRouter.patch(
   "/:id",
-  requireAnyRole("owner", "operasional", "developer"),
+  requirePermission("sprints.write"),
   validateRequest({
     params: sprintIdParamSchema,
     body: updateSprintSchema,
@@ -59,7 +62,7 @@ sprintsRouter.patch(
 
 sprintsRouter.post(
   "/:id/start",
-  requireAnyRole("owner", "operasional", "developer"),
+  requirePermission("sprints.write"),
   validateRequest({ params: sprintIdParamSchema }),
   asyncHandler(sprintsController.startSprint)
 );
@@ -67,35 +70,35 @@ sprintsRouter.post(
 // AC-11: PATCH /api/v1/sprints/:id/complete (dan POST untuk fleksibilitas)
 sprintsRouter.patch(
   "/:id/complete",
-  requireAnyRole("owner", "operasional", "developer"),
+  requirePermission("sprints.write"),
   validateRequest({ params: sprintIdParamSchema }),
   asyncHandler(sprintsController.completeSprint)
 );
 
 sprintsRouter.post(
   "/:id/complete",
-  requireAnyRole("owner", "operasional", "developer"),
+  requirePermission("sprints.write"),
   validateRequest({ params: sprintIdParamSchema }),
   asyncHandler(sprintsController.completeSprint)
 );
 
 sprintsRouter.post(
   "/:id/reopen",
-  requireAnyRole("owner", "operasional", "developer"),
+  requirePermission("sprints.write"),
   validateRequest({ params: sprintIdParamSchema }),
   asyncHandler(sprintsController.reopenSprint)
 );
 
 sprintsRouter.delete(
   "/:id",
-  requireAnyRole("owner", "operasional"),
+  requirePermission("sprints.delete"),
   validateRequest({ params: sprintIdParamSchema }),
   asyncHandler(sprintsController.deleteSprint)
 );
 
 sprintsRouter.post(
   "/:id/tasks",
-  requireAnyRole("owner", "operasional", "developer"),
+  requirePermission("sprints.write"),
   validateRequest({
     params: sprintIdParamSchema,
     body: assignTasksSchema,

@@ -1,4 +1,5 @@
-import zlib from "node:zlib";
+import { gzip, gunzipSync } from "node:zlib";
+import { promisify } from "node:util";
 import {
   BadRequestError,
   ForbiddenError,
@@ -18,6 +19,7 @@ import {
 } from "./governance.types.js";
 import { projectsRepository } from "./projects.repository.js";
 import { prisma } from "../../config/db.config.js";
+const gzipAsync = promisify(gzip);
 
 export const governanceService = {
   // ==========================================
@@ -546,7 +548,7 @@ export const governanceService = {
     }
 
     try {
-      const decompressed = zlib.gunzipSync(version.compressedContent).toString("utf-8");
+      const decompressed = gunzipSync(version.compressedContent).toString("utf-8");
       return {
         id: version.id,
         projectId: version.projectId,
@@ -577,7 +579,7 @@ export const governanceService = {
     // AC-B2-4: Cek apakah konten berbeda dari versi terakhir
     if (latest) {
       try {
-        const latestContent = zlib.gunzipSync(latest.compressedContent).toString("utf-8");
+        const latestContent = gunzipSync(latest.compressedContent).toString("utf-8");
         if (latestContent === dto.content) {
           return {
             id: latest.id,
@@ -596,7 +598,7 @@ export const governanceService = {
     }
 
     // Kompresi konten baru menggunakan zlib.gzipSync
-    const compressed = zlib.gzipSync(Buffer.from(dto.content, "utf-8"));
+    const compressed = await gzipAsync(Buffer.from(dto.content, "utf-8"));
     const uint8Content = new Uint8Array(compressed.buffer, compressed.byteOffset, compressed.byteLength) as Uint8Array<ArrayBuffer>;
     const nextVersionNumber = (latest?.versionNumber ?? 0) + 1;
 
@@ -657,7 +659,7 @@ export const governanceService = {
 
     let targetContent: string;
     try {
-      targetContent = zlib.gunzipSync(targetVersion.compressedContent).toString("utf-8");
+      targetContent = gunzipSync(targetVersion.compressedContent).toString("utf-8");
     } catch {
       throw new BadRequestError("Gagal mendekompresi konten versi PRD asal.");
     }
@@ -666,7 +668,7 @@ export const governanceService = {
     const nextVersionNumber = (latest?.versionNumber ?? 0) + 1;
 
     // AC-B2-4: When endpoint restore dipanggil, versi lama didekompresi dan disimpan sebagai versi baru di urutan teratas tanpa menimpa versi sebelumnya
-    const compressed = zlib.gzipSync(Buffer.from(targetContent, "utf-8"));
+    const compressed = await gzipAsync(Buffer.from(targetContent, "utf-8"));
     const uint8Content = new Uint8Array(compressed.buffer, compressed.byteOffset, compressed.byteLength) as Uint8Array<ArrayBuffer>;
 
     const restoredVersion = await governanceRepository.createPrdVersion({

@@ -39,3 +39,13 @@ export const updateUserRoleSchema = z.object({
 export const updateUserStatusSchema = z.object({
   isActive: z.boolean({ message: "Status aktif akun wajib disertakan." }),
 });
+
+export const forgotPasswordSchema = z.object({ email: z.string().email().transform((value) => value.toLowerCase()) });
+export const resetPasswordSchema = z.object({
+  token: z.string().min(32).max(256),
+  newPassword: z.string().min(8).refine((value) => Buffer.byteLength(value, "utf8") <= 72, "Password terlalu panjang."),
+});
+export const avatarSchema = z.object({
+  dataUrl: z.string().max(2_700_000).regex(/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/),
+});
+export const verifyInvitationSchema = z.object({ token: z.string().min(32).max(256) });

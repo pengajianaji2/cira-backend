@@ -1,4 +1,4 @@
-import { BadRequestError, ConflictError, NotFoundError } from "../../shared/errors/AppError.js";
+import { BadRequestError, ConflictError, NotFoundError, ServiceUnavailableError } from "../../shared/errors/AppError.js";
 import { AuthUserPayload } from "../../shared/middlewares/auth.middleware.js";
 import { financeRepository } from "./finance.repository.js";
 import {
@@ -12,10 +12,12 @@ import {
 } from "./finance.types.js";
 import { cloudinaryStorage } from "../assets/cloudinary.service.js";
 
-const presentPayment = <T extends { proofUrl?: string | null }>(payment: T): T => ({
+const presentPayment = (payment: any) => ({
   ...payment,
+  ...(payment.amount !== undefined ? { amount: Number(payment.amount) } : {}),
   proofUrl: payment.proofUrl ? cloudinaryStorage.deliveryUrl(payment.proofUrl) : payment.proofUrl,
 });
+const presentTerm = (term: any) => ({ ...term, amount: Number(term.amount) });
 
 export const financeService = {
   // =========================================================================
@@ -99,7 +101,7 @@ export const financeService = {
 
     return {
       contractValue: dto.contractValue,
-      terms: savedTerms,
+      terms: savedTerms.map(presentTerm),
     };
   },
 
@@ -109,7 +111,7 @@ export const financeService = {
       throw new NotFoundError(`Proyek dengan ID '${projectId}' tidak ditemukan.`);
     }
 
-    return financeRepository.findTermsByProjectId(projectId);
+    return (await financeRepository.findTermsByProjectId(projectId)).map(presentTerm);
   },
 
   async getTermById(id: string) {
@@ -117,7 +119,7 @@ export const financeService = {
     if (!term) {
       throw new NotFoundError(`Termin pembayaran dengan ID '${id}' tidak ditemukan.`);
     }
-    return term;
+    return presentTerm(term);
   },
 
   /**
@@ -152,8 +154,7 @@ export const financeService = {
           `cira-pm/projects/${term.projectId}/bast`
         );
       } catch {
-        // Fallback jika Cloudinary offline / mock sandbox
-        finalBastUrl = dto.bastUrl;
+        throw new ServiceUnavailableError("Dokumen tidak tersimpan karena layanan upload sedang tidak tersedia. Coba kembali.");
       }
     }
 
@@ -180,7 +181,7 @@ export const financeService = {
       },
     });
 
-    return updated;
+    return presentTerm(updated);
   },
 
   /**
@@ -204,26 +205,22 @@ export const financeService = {
       );
     }
 
-    // Format Penomoran Seri Otomatis: INV-YYYY-NNN/Tn
     const year = new Date().getFullYear();
-    const invoicedCount = await financeRepository.countInvoicedTermsInYear(year);
-    const sequenceNumber = String(invoicedCount + 1).padStart(3, "0");
-    const invoiceNumber = `INV-${year}-${sequenceNumber}/T${term.termNumber}`;
-
-    const updated = await financeRepository.updateTerm(id, {
-      invoiceNumber,
+    const issued = await financeRepository.issueInvoiceAtomically(id, year, term.termNumber, {
       invoiceIssuedAt: new Date(),
       status: "invoiced",
-      isLocked: true, // Terkunci dari pengubahan atau penghapusan
+      isLocked: true,
       invoicePdfUrl: dto.invoicePdfUrl || term.invoicePdfUrl || null,
       notes: dto.notes ? `${term.notes || ""}\n${dto.notes}`.trim() : term.notes,
     });
+    if (!issued?.updated) throw new ConflictError("Invoice telah diterbitkan oleh proses lain. Muat ulang data termin.");
+    const { invoiceNumber, updated } = issued;
 
     await financeRepository.logActivity({
       projectId: term.projectId,
       category: "finance",
       action: "INVOICE_ISSUE",
-      description: `Invoice resmi ${invoiceNumber} diterbitkan untuk "${term.title}" sebesar Rp ${term.amount.toLocaleString(
+      description: `Invoice resmi ${invoiceNumber} diterbitkan untuk "${term.title}" sebesar Rp ${Number(term.amount).toLocaleString(
         "id-ID"
       )}. Termin terkunci dari perubahan.`,
       userId: user?.id,
@@ -232,13 +229,13 @@ export const financeService = {
       metadata: {
         termId: id,
         invoiceNumber,
-        amount: term.amount,
+        amount: Number(term.amount),
         status: "invoiced",
         isLocked: true,
       },
     });
 
-    return updated;
+    return presentTerm(updated);
   },
 
   async deleteTerm(id: string, user?: AuthUserPayload) {
@@ -297,14 +294,14 @@ export const financeService = {
       projectId,
       category: "finance",
       action: "CREATE",
-      description: `Termin pembayaran "${payment.title}" sebesar Rp ${payment.amount.toLocaleString("id-ID")} berhasil ditambahkan.`,
+      description: `Termin pembayaran "${payment.title}" sebesar Rp ${Number(payment.amount).toLocaleString("id-ID")} berhasil ditambahkan.`,
       userId: user?.id,
       userName: user?.name,
       userRole: user?.roles?.[0],
       metadata: {
         paymentId: payment.id,
         title: payment.title,
-        amount: payment.amount,
+        amount: Number(payment.amount),
         status: payment.status,
       },
     });
@@ -339,7 +336,7 @@ export const financeService = {
       category: "finance",
       action: dto.verified ? "VERIFY" : "UNVERIFY",
       description: dto.verified
-        ? `Pembayaran "${existing.title}" sebesar Rp ${existing.amount.toLocaleString("id-ID")} telah diverifikasi oleh ${user?.name || "Pengguna"}.`
+        ? `Pembayaran "${existing.title}" sebesar Rp ${Number(existing.amount).toLocaleString("id-ID")} telah diverifikasi oleh ${user?.name || "Pengguna"}.`
         : `Verifikasi pembayaran "${existing.title}" dibatalkan oleh ${user?.name || "Pengguna"}.`,
       userId: user?.id,
       userName: user?.name,
@@ -347,7 +344,7 @@ export const financeService = {
       metadata: {
         paymentId: id,
         verified: dto.verified,
-        amount: existing.amount,
+        amount: Number(existing.amount),
       },
     });
 
@@ -403,14 +400,14 @@ export const financeService = {
       projectId: existing.projectId,
       category: "finance",
       action: "DELETE",
-      description: `Termin pembayaran "${existing.title}" sebesar Rp ${existing.amount.toLocaleString("id-ID")} dihapus.`,
+      description: `Termin pembayaran "${existing.title}" sebesar Rp ${Number(existing.amount).toLocaleString("id-ID")} dihapus.`,
       userId: user?.id,
       userName: user?.name,
       userRole: user?.roles?.[0],
       metadata: {
         paymentId: id,
         title: existing.title,
-        amount: existing.amount,
+        amount: Number(existing.amount),
       },
     });
 
@@ -423,15 +420,15 @@ export const financeService = {
       throw new NotFoundError(`Proyek dengan ID '${projectId}' tidak ditemukan.`);
     }
 
-    const contractValue = project.contractValue || 0;
+    const contractValue = Number(project.contractValue || 0);
     const [verified, pending, paymentsCount, terms] = await Promise.all([
       financeRepository.aggregateByProjectAndStatus(projectId, "verified"),
       financeRepository.aggregateByProjectAndStatus(projectId, "pending"),
       financeRepository.countByProjectId(projectId),
       financeRepository.findTermsByProjectId(projectId),
     ]);
-    const totalVerified = verified._sum.amount || 0;
-    const totalPending = pending._sum.amount || 0;
+    const totalVerified = Number(verified._sum.amount || 0);
+    const totalPending = Number(pending._sum.amount || 0);
 
     const remainingBalance = Math.max(0, contractValue - totalVerified);
     const paidPercentage = contractValue > 0 ? Math.min(100, Math.round((totalVerified / contractValue) * 100)) : 0;
@@ -440,7 +437,7 @@ export const financeService = {
 
     const totalInvoiced = terms
       .filter((t) => t.status === "invoiced" || t.status === "paid")
-      .reduce((sum, t) => sum + t.amount, 0);
+      .reduce((sum, t) => sum + Number(t.amount), 0);
 
     return {
       contractValue,

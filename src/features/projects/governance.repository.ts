@@ -227,6 +227,9 @@ export const governanceRepository = {
     requestedById: string
   ) {
     return prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`status-request-${projectId}`}))`;
+      const pending = await tx.projectStatusRequest.findFirst({ where: { projectId, status: "pending" }, select: { id: true } });
+      if (pending) return null;
       const request = await tx.projectStatusRequest.create({
         data: {
           projectId,

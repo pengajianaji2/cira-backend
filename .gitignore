@@ -5,8 +5,8 @@ node_modules/
 dist/
 
 # Environment Variables & Secrets
-.env
-.env*.local
+.env*
+!.env.example
 pass supa
 
 # Logs
@@ -18,3 +18,5 @@ npm-debug.log*
 .claude/
 .cursor/
 .devin/
+
+

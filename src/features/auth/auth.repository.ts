@@ -23,8 +23,16 @@ export const authRepository = {
   async updatePassword(id: string, passwordHash: string) {
     return prisma.user.update({
       where: { id },
-      data: { passwordHash },
+      data: { passwordHash, tokenVersion: { increment: 1 } },
     });
+  },
+
+  async revokeSessions(id: string) {
+    return prisma.user.update({ where: { id }, data: { tokenVersion: { increment: 1 } } });
+  },
+
+  async updateAvatar(id: string, avatarUrl: string | null) {
+    return prisma.user.update({ where: { id }, data: { avatarUrl } });
   },
 
   async createUser(data: {
@@ -65,9 +73,9 @@ export const authRepository = {
     });
   },
 
-  async findInvitationByToken(token: string) {
-    return prisma.userInvitation.findUnique({
-      where: { token },
+  async findInvitationByToken(tokenHash: string, legacyToken?: string) {
+    return prisma.userInvitation.findFirst({
+      where: { OR: legacyToken ? [{ token: tokenHash }, { token: legacyToken }] : [{ token: tokenHash }] },
       include: {
         invitedBy: {
           select: { id: true, name: true, email: true },
@@ -76,9 +84,37 @@ export const authRepository = {
     });
   },
 
-  async deleteInvitationByToken(token: string) {
-    return prisma.userInvitation.delete({
-      where: { token },
+  async deleteInvitationById(id: string) {
+    return prisma.userInvitation.delete({ where: { id } });
+  },
+
+  async createPasswordResetToken(userId: string, tokenHash: string, expiresAt: Date) {
+    await prisma.passwordResetToken.deleteMany({ where: { userId } });
+    return prisma.passwordResetToken.create({ data: { userId, tokenHash, expiresAt } });
+  },
+
+  async findPasswordResetToken(tokenHash: string) {
+    return prisma.passwordResetToken.findUnique({ where: { tokenHash }, include: { user: true } });
+  },
+
+  async deletePasswordResetToken(tokenHash: string) {
+    return prisma.passwordResetToken.deleteMany({ where: { tokenHash } });
+  },
+
+  async consumePasswordReset(tokenHash: string, userId: string, passwordHash: string) {
+    return prisma.$transaction(async (tx) => {
+      const removed = await tx.passwordResetToken.deleteMany({
+        where: { tokenHash, userId, expiresAt: { gt: new Date() } },
+      });
+      if (removed.count !== 1) return false;
+      await tx.user.update({ where: { id: userId }, data: { passwordHash, tokenVersion: { increment: 1 } } });
+      return true;
+    });
+  },
+
+  async deleteInvitationByToken(tokenHash: string, legacyToken?: string) {
+    return prisma.userInvitation.deleteMany({
+      where: { OR: legacyToken ? [{ token: tokenHash }, { token: legacyToken }] : [{ token: tokenHash }] },
     });
   },
 
@@ -105,6 +141,7 @@ export const authRepository = {
           whatsapp: data.whatsapp,
           instagram: data.instagram,
           isActive: true,
+          tokenVersion: { increment: 1 },
         },
       });
     }
@@ -133,7 +170,7 @@ export const authRepository = {
   async updateUserStatus(id: string, isActive: boolean) {
     return prisma.user.update({
       where: { id },
-      data: { isActive },
+      data: { isActive, tokenVersion: { increment: 1 } },
     });
   },
 
