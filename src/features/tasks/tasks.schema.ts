@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const taskStatusEnum = z.enum(["todo", "in_progress", "done"]);
+export const taskStatusEnum = z.enum(["todo", "done"]);
 export const taskPriorityEnum = z.enum(["low", "medium", "high", "urgent"]);
 export const FIBONACCI_VALUES = [1, 2, 3, 5, 8, 13] as const;
 
@@ -21,7 +21,7 @@ export const createTaskSchema = z.object({
   priority: taskPriorityEnum.default("medium"),
   order: z.number().int().nonnegative().optional(),
   storyPoints: taskStoryPointsSchema.optional(),
-  sprintId: z.string().optional(),
+  sprintId: z.string().nullable().optional(),
   assigneeId: z.string().optional(),
   assigneeName: z.string().optional(),
   assigneeRole: z.string().optional(),
@@ -43,6 +43,10 @@ export const updateTaskSchema = z.object({
 export const updateTaskStatusSchema = z.object({
   status: taskStatusEnum,
   order: z.number().int().nonnegative().optional(),
+});
+
+export const moveTaskToSprintSchema = z.object({
+  targetSprintId: z.string().nullable(),
 });
 
 export const taskIdParamSchema = z.object({

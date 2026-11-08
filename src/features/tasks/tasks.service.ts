@@ -5,6 +5,7 @@ import { FIBONACCI_POINTS } from "../sprints/sprints.types.js";
 import { tasksRepository } from "./tasks.repository.js";
 import {
   CreateTaskDto,
+  MoveTaskToSprintDto,
   ProjectTasksResult,
   UpdateTaskDto,
   UpdateTaskStatusDto,
@@ -34,44 +35,50 @@ export const tasksService = {
     };
   },
 
+  /**
+   * BR-TASK-01 — Status tunggal ('todo' | 'done'). Default 'todo'.
+   * BR-TASK-02 — Default Backlog (sprintId = null). Penambahan ke sprint eksplisit.
+   * BR-TASK-04 — Sprint harus dalam proyek yang sama dan tidak boleh completed.
+   */
   async createTask(projectId: string, dto: CreateTaskDto, user?: AuthUserPayload) {
     const project = await tasksRepository.findProjectById(projectId);
     if (!project) {
       throw new NotFoundError(`Proyek dengan ID '${projectId}' tidak ditemukan.`);
     }
 
-    // Jika task langsung dimasukkan ke sprint
-    if (dto.sprintId) {
-      const sprint = await sprintsRepository.findById(dto.sprintId);
+    const sprintId = dto.sprintId || null;
+
+    // Jika task ditugaskan ke sprint tertentu
+    if (sprintId) {
+      const sprint = await sprintsRepository.findById(sprintId);
       if (!sprint) {
-        throw new NotFoundError(`Sprint dengan ID '${dto.sprintId}' tidak ditemukan.`);
+        throw new NotFoundError(`Sprint dengan ID '${sprintId}' tidak ditemukan.`);
       }
       if (sprint.projectId !== projectId) {
         throw new BadRequestError("Sprint harus berasal dari proyek yang sama dengan task.");
       }
+      if (sprint.status === "completed") {
+        throw new BadRequestError("Sprint yang sudah selesai (completed) tidak dapat menerima task baru.");
+      }
 
-      // Jika sprint berstatus aktif, wajib memiliki assignee dan Fibonacci points
-      if (sprint.status === "active") {
-        if (!dto.assigneeId) {
-          throw new BadRequestError(
-            "Task yang dimasukkan ke sprint aktif wajib memiliki tepat satu assignee."
-          );
-        }
-        if (!isFibonacci(dto.storyPoints)) {
-          throw new BadRequestError(
-            "Task yang dimasukkan ke sprint aktif wajib memiliki story points Fibonacci (1, 2, 3, 5, 8, 13)."
-          );
-        }
+      // Jika sprint berstatus aktif, verifikasi assignee & points jika diisi
+      if (sprint.status === "active" && dto.storyPoints && !isFibonacci(dto.storyPoints)) {
+        throw new BadRequestError(
+          "Story points wajib salah satu deret Fibonacci (1, 2, 3, 5, 8, 13)."
+        );
       }
     }
 
+    const status = dto.status || "todo";
     let order = dto.order;
     if (order === undefined) {
-      order = await tasksRepository.getNextOrder(projectId, dto.status || "todo");
+      order = await tasksRepository.getNextOrder(projectId, status);
     }
 
     const task = await tasksRepository.create(projectId, {
       ...dto,
+      status,
+      sprintId,
       order,
     });
 
@@ -79,7 +86,7 @@ export const tasksService = {
       projectId,
       category: "task",
       action: "CREATE",
-      description: `Task "${task.title}" dibuat di kolom ${task.status}.`,
+      description: `Task "${task.title}" dibuat di daftar ${sprintId ? "Sprint" : "Backlog"} dengan status ${task.status}.`,
       userId: user?.id,
       userName: user?.name,
       userRole: user?.roles?.[0],
@@ -92,15 +99,13 @@ export const tasksService = {
       },
     });
 
-    // Perbarui progres kumulatif proyek jika task memiliki poin
-    if (task.storyPoints) {
-      const cumulative = await sprintsRepository.calculateCumulativeProgress(projectId);
-      await sprintsRepository.updateProjectProgress(projectId, cumulative.progress);
-    }
-
     return task;
   },
 
+  /**
+   * BR-TASK-01 — Status tunggal ('todo' | 'done'). Checkbox checked iff 'done'.
+   * Tidak ada 'isCompleted' paralel.
+   */
   async updateTaskStatus(
     id: string,
     dto: UpdateTaskStatusDto,
@@ -137,9 +142,80 @@ export const tasksService = {
       },
     });
 
-    // Rekalkulasi progres proyek jika status berubah
-    const cumulative = await sprintsRepository.calculateCumulativeProgress(existing.projectId);
-    await sprintsRepository.updateProjectProgress(existing.projectId, cumulative.progress);
+    return updated;
+  },
+
+  /**
+   * BR-TASK-03 & BR-TASK-04 — Pemindahan task antar sprint atau ke Backlog.
+   * - Memeriksa proyek sama
+   * - Sprint target valid dan tidak completed
+   * - targetSprintId = null memindahkan kembali ke Backlog
+   */
+  async moveTaskToSprint(
+    id: string,
+    dto: MoveTaskToSprintDto,
+    user?: AuthUserPayload
+  ) {
+    const existing = await tasksRepository.findById(id);
+    if (!existing) {
+      throw new NotFoundError(`Task dengan ID '${id}' tidak ditemukan.`);
+    }
+
+    const { targetSprintId } = dto;
+
+    // Jika dipindahkan ke Backlog (targetSprintId === null)
+    if (!targetSprintId) {
+      const updated = await tasksRepository.update(id, { sprintId: null });
+
+      await tasksRepository.logActivity({
+        projectId: existing.projectId,
+        category: "task",
+        action: "MOVE_TO_BACKLOG",
+        description: `Task "${existing.title}" dipindahkan ke Backlog.`,
+        userId: user?.id,
+        userName: user?.name,
+        userRole: user?.roles?.[0],
+        metadata: {
+          taskId: id,
+          previousSprintId: existing.sprintId,
+          newSprintId: null,
+        },
+      });
+
+      return updated;
+    }
+
+    // Jika dipindahkan ke Sprint
+    const targetSprint = await sprintsRepository.findById(targetSprintId);
+    if (!targetSprint) {
+      throw new NotFoundError(`Sprint target dengan ID '${targetSprintId}' tidak ditemukan.`);
+    }
+
+    if (targetSprint.projectId !== existing.projectId) {
+      throw new BadRequestError("Sprint harus berasal dari proyek yang sama dengan task.");
+    }
+
+    if (targetSprint.status === "completed") {
+      throw new BadRequestError("Sprint yang sudah selesai (completed) tidak dapat menerima task baru.");
+    }
+
+    const updated = await tasksRepository.update(id, { sprintId: targetSprintId });
+
+    await tasksRepository.logActivity({
+      projectId: existing.projectId,
+      category: "task",
+      action: "MOVE_TO_SPRINT",
+      description: `Task "${existing.title}" dipindahkan ke sprint "${targetSprint.name}".`,
+      userId: user?.id,
+      userName: user?.name,
+      userRole: user?.roles?.[0],
+      metadata: {
+        taskId: id,
+        previousSprintId: existing.sprintId,
+        newSprintId: targetSprintId,
+        targetSprintStatus: targetSprint.status,
+      },
+    });
 
     return updated;
   },
@@ -150,27 +226,14 @@ export const tasksService = {
       throw new NotFoundError(`Task dengan ID '${id}' tidak ditemukan.`);
     }
 
-    // Jika sprintId diubah ke sprint aktif
-    const targetSprintId = dto.sprintId !== undefined ? dto.sprintId : existing.sprintId;
-    if (targetSprintId) {
-      const sprint = await sprintsRepository.findById(targetSprintId);
+    // Jika sprintId diubah
+    if (dto.sprintId !== undefined && dto.sprintId !== null) {
+      const sprint = await sprintsRepository.findById(dto.sprintId);
       if (!sprint || sprint.projectId !== existing.projectId) {
         throw new BadRequestError("Sprint harus berasal dari proyek yang sama dengan task.");
       }
-      if (sprint.status === "active") {
-        const finalAssigneeId = dto.assigneeId !== undefined ? dto.assigneeId : existing.assigneeId;
-        const finalPoints = dto.storyPoints !== undefined ? dto.storyPoints : existing.storyPoints;
-
-        if (!finalAssigneeId) {
-          throw new BadRequestError(
-            "Task dalam sprint aktif wajib memiliki tepat satu assignee."
-          );
-        }
-        if (!isFibonacci(finalPoints)) {
-          throw new BadRequestError(
-            "Task dalam sprint aktif wajib memiliki story points Fibonacci (1, 2, 3, 5, 8, 13)."
-          );
-        }
+      if (sprint.status === "completed") {
+        throw new BadRequestError("Sprint yang sudah selesai (completed) tidak dapat menerima task baru.");
       }
     }
 
@@ -193,10 +256,6 @@ export const tasksService = {
         changes: dto,
       },
     });
-
-    // Rekalkulasi progres kumulatif proyek
-    const cumulative = await sprintsRepository.calculateCumulativeProgress(existing.projectId);
-    await sprintsRepository.updateProjectProgress(existing.projectId, cumulative.progress);
 
     return updated;
   },
@@ -222,10 +281,6 @@ export const tasksService = {
         title: existing.title,
       },
     });
-
-    // Rekalkulasi progres kumulatif proyek
-    const cumulative = await sprintsRepository.calculateCumulativeProgress(existing.projectId);
-    await sprintsRepository.updateProjectProgress(existing.projectId, cumulative.progress);
 
     return existing;
   },
