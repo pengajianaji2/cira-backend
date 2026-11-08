@@ -5,6 +5,7 @@ import { asyncHandler } from "../../shared/utils/asyncHandler.js";
 import { tasksController } from "./tasks.controller.js";
 import {
   createTaskSchema,
+  moveTaskToSprintSchema,
   projectIdParamSchema,
   taskIdParamSchema,
   updateTaskSchema,
@@ -44,6 +45,16 @@ tasksRouter.patch(
     body: updateTaskStatusSchema,
   }),
   asyncHandler(tasksController.updateTaskStatus)
+);
+
+tasksRouter.patch(
+  "/:id/move-sprint",
+  requirePermission("tasks.write"),
+  validateRequest({
+    params: taskIdParamSchema,
+    body: moveTaskToSprintSchema,
+  }),
+  asyncHandler(tasksController.moveTaskToSprint)
 );
 
 tasksRouter.patch(

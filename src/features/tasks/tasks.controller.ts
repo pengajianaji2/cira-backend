@@ -18,7 +18,13 @@ export const tasksController = {
   async updateTaskStatus(req: Request, res: Response): Promise<Response> {
     const id = req.params.id as string;
     const task = await tasksService.updateTaskStatus(id, req.body, req.user);
-    return sendSuccess(res, "Status kolom task berhasil diperbarui", task);
+    return sendSuccess(res, "Status task berhasil diperbarui", task);
+  },
+
+  async moveTaskToSprint(req: Request, res: Response): Promise<Response> {
+    const id = req.params.id as string;
+    const task = await tasksService.moveTaskToSprint(id, req.body, req.user);
+    return sendSuccess(res, "Task berhasil dipindahkan", task);
   },
 
   async updateTask(req: Request, res: Response): Promise<Response> {

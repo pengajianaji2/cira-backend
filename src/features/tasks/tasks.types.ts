@@ -1,4 +1,4 @@
-export type TaskStatus = "todo" | "in_progress" | "done";
+export type TaskStatus = "todo" | "done";
 export type TaskPriority = "low" | "medium" | "high" | "urgent";
 
 export interface CreateTaskDto {
@@ -8,7 +8,7 @@ export interface CreateTaskDto {
   priority?: TaskPriority;
   order?: number;
   storyPoints?: number;
-  sprintId?: string;
+  sprintId?: string | null;
   assigneeId?: string;
   assigneeName?: string;
   assigneeRole?: string;
@@ -30,6 +30,10 @@ export interface UpdateTaskDto {
 export interface UpdateTaskStatusDto {
   status: TaskStatus;
   order?: number;
+}
+
+export interface MoveTaskToSprintDto {
+  targetSprintId: string | null; // null = Backlog
 }
 
 export interface ProjectTasksResult {
