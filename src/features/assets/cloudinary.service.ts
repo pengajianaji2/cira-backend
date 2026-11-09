@@ -20,11 +20,14 @@ const configure = () => {
   }
 };
 
+/** Adapter penyimpanan dan pengiriman media terotentikasi Cloudinary untuk avatar dan aset desain. */
 export const cloudinaryStorage = {
+  /** Memeriksa apakah nilai string merupakan referensi penyimpanan Cloudinary (`cloudinary://...`). */
   isStoredReference(value: string | null | undefined): boolean {
     return Boolean(value?.startsWith(markerPrefix));
   },
 
+  /** Mengunggah file/data URL secara authenticated ke folder Cloudinary tujuan dan mengembalikan referensi `cloudinary://...`. */
   async upload(dataUrl: string, folder: string): Promise<string> {
     configure();
     const uploaded = await cloudinary.uploader.upload(dataUrl, {
@@ -38,6 +41,7 @@ export const cloudinaryStorage = {
     return `${markerPrefix}${uploaded.resource_type}:${uploaded.format}:${uploaded.public_id}`;
   },
 
+  /** Menghasilkan signature unggah langsung berumur singkat untuk unggahan Cloudinary authenticated. */
   createUploadSignature(folder: string, publicId: string) {
     configure();
     const timestamp = Math.floor(Date.now() / 1000);
@@ -50,6 +54,7 @@ export const cloudinaryStorage = {
     };
   },
 
+  /** Memverifikasi keberadaan objek Cloudinary authenticated serta kesesuaian folder dan `publicId`-nya. */
   async verifyUpload(folder: string, publicId: string) {
     configure();
     let resource;
@@ -66,10 +71,12 @@ export const cloudinaryStorage = {
     return resource as { bytes: number; format: string; resource_type: string; public_id: string };
   },
 
+  /** Membentuk string referensi internal berformat `cloudinary://<resourceType>:<format>:<publicId>`. */
   toStoredReference(resourceType: string, format: string, publicId: string): string {
     return `${markerPrefix}${resourceType}:${format}:${publicId}`;
   },
 
+  /** Menghasilkan delivery URL HTTPS bertanda tangan dari referensi `cloudinary://...` (atau mengembalikan URL non-referensi apa adanya). */
   deliveryUrl(reference: string): string {
     if (!this.isStoredReference(reference)) return reference;
     configure();
@@ -86,6 +93,7 @@ export const cloudinaryStorage = {
     });
   },
 
+  /** Menghapus objek authenticated di Cloudinary berdasarkan referensi `cloudinary://...` yang tersimpan. */
   async destroy(reference: string): Promise<void> {
     if (!this.isStoredReference(reference)) return;
     configure();

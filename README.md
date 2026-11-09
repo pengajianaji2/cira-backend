@@ -63,7 +63,7 @@ backend/
 │       ├── middlewares/                                  # auth, csrf, errorHandler, loginRateLimit, validateBrowserOrigin, validateRequest
 │       ├── services/email.service.ts                     # Template HTML/Text & pengirim SMTP Gmail Nodemailer
 │       └── utils/                                        # asyncHandler, businessDate (WIB / Asia/Jakarta), responseFormatter
-└── tests/                                                # Automated test suite (8 file, 75 test)
+└── tests/                                                # Automated test suite (10 file, 82 test)
     ├── tasks_todo_backlog.test.ts                        # 4 tests  — US-1 checklist & backlog
     ├── sprints.test.ts                                   # 11 tests — Daur hidup sprint & resolusi task todo
     ├── sprints_lifecycle_progress.test.ts                # 5 tests  — US-2 progres rasio sprint & tutup atomik
@@ -71,7 +71,9 @@ backend/
     ├── finance_terms_invoicing.test.ts                   # 7 tests  — US-3 pemicu tunggal, ready idempotent, invoice & overdue WIB
     ├── operations_calendar.test.ts                       # 10 tests — US-4 kalender teragregasi WIB, agenda, & RBAC
     ├── governance.test.ts                                # 14 tests — Roster voting, repo links, & PRD GZIP
-    └── security.test.ts                                  # 13 tests — Auth, CSRF, origin check, & role policies
+    ├── security.test.ts                                  # 13 tests — Auth, CSRF, origin check, signed upload & role policies
+    ├── us1-avatar.test.ts                                # 4 tests  — Crop avatar, cleanup rollback, & delivery URL lintas service
+    └── us2-profile-contacts.test.ts                      # 3 tests  — Kontak profil opsional/nullable & tampilan direktori tim
 ```
 
 ---
@@ -153,7 +155,7 @@ Suite pengujian otomatis dijalankan dengan Node built-in test runner (`tsx --tes
 npm test
 ```
 
-*Terverifikasi: `75 tests passing, 0 failing` across 8 test files.*
+*Terverifikasi: `82 tests passing, 0 failing` across 10 test files.*
 
 ---
 
@@ -182,15 +184,15 @@ npm test
 | `POST` | `/api/v1/auth/forgot-password` | Mengirim tautan reset password 30 menit ke email aktif | Publik (rate-limited) |
 | `POST` | `/api/v1/auth/reset-password` | Memperbarui password dari token reset sekali pakai | Publik (rate-limited) |
 | `GET` | `/api/v1/auth/me` | Mengambil data profil pengguna terautentikasi | Sesi Valid |
-| `PUT` | `/api/v1/auth/profile` | Memperbarui nama, email, WhatsApp, dan Instagram | Sesi Valid |
-| `POST` | `/api/v1/auth/avatar` | Mengunggah foto profil ke Cloudinary | Sesi Valid |
+| `PUT` | `/api/v1/auth/profile` | Memperbarui nama, email, serta WhatsApp dan Instagram (opsional/nullable) | Sesi Valid |
+| `POST` | `/api/v1/auth/avatar` | Mengunggah foto profil hasil crop 1:1 ke Cloudinary (signed delivery URL) | Sesi Valid |
 | `PUT` | `/api/v1/auth/password` | Mengubah password dengan verifikasi password lama | Sesi Valid |
 | `POST` | `/api/v1/auth/invite` | Membuat undangan 24 jam (`developer` / `operasional`) + kirim email | Owner (`users.invite`) |
 | `POST` | `/api/v1/auth/invite/verify` | Memverifikasi validitas dan masa berlaku token undangan | Publik (rate-limited) |
 | `POST` | `/api/v1/auth/activate` | Aktivasi akun anggota dari token undangan sekali pakai | Publik |
 | `PATCH` | `/api/v1/auth/users/:id/role` | Mengubah role anggota tim | Owner (`users.manage`) |
 | `PATCH` | `/api/v1/auth/users/:id/status` | Mengaktifkan/menonaktifkan akun anggota | Owner (`users.manage`) |
-| `GET` | `/api/v1/users/directory` | Daftar direktori anggota tim beserta kontak & status aktif | `directory.read` |
+| `GET` | `/api/v1/users/directory` | Daftar direktori anggota tim beserta kontak, signed `avatarUrl`, & status aktif | `directory.read` |
 | `GET` | `/api/v1/policies/me` | Daftar permission efektif pengguna yang sedang login | Sesi Valid |
 | `GET` | `/api/v1/policies` | Daftar policy permission seluruh role + katalog permission | Owner (`policies.manage`) |
 | `GET` | `/api/v1/policies/history` | Riwayat perubahan policy RBAC (maks 100 terbaru) | Owner (`policies.manage`) |
@@ -277,9 +279,11 @@ npm test
 | Method | Endpoint | Deskripsi | Hak Akses |
 |---|---|---|---|
 | `GET` | `/api/v1/projects/:projectId/activities` | Riwayat aktivitas proyek kronologis (`?category=...&limit=...`, read-only API) | `activities.read` |
-| `GET` | `/api/v1/projects/:projectId/assets` | Galeri aset desain proyek | `projects.read` |
-| `POST` | `/api/v1/projects/:projectId/assets` | Menyimpan metadata & data aset desain | `assets.write` |
-| `DELETE` | `/api/v1/assets/:id` | Menghapus aset desain proyek | `assets.write` |
+| `GET` | `/api/v1/projects/:projectId/assets` | Galeri aset desain proyek beserta signed delivery `dataUrl` | `projects.read` |
+| `POST` | `/api/v1/projects/:projectId/assets/upload-signature` | Menerbitkan signature direct upload Cloudinary (`publicId` UUID) | `assets.write` |
+| `DELETE` | `/api/v1/projects/:projectId/assets/upload/:publicId` | Membersihkan unggahan sementara Cloudinary yatim | `assets.write` |
+| `POST` | `/api/v1/projects/:projectId/assets` | Memverifikasi unggahan & menyimpan metadata aset desain (`publicId`) | `assets.write` |
+| `DELETE` | `/api/v1/assets/:id` | Menghapus aset desain proyek dari database & Cloudinary | `assets.write` |
 
 ---
 

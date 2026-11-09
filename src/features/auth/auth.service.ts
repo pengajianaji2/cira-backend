@@ -113,6 +113,7 @@ export const authService = {
     return toUserResponse(updated);
   },
 
+  /** Mengganti password pengguna terautentikasi setelah memverifikasi password lama. */
   async changePassword(userId: string, input: ChangePasswordInput): Promise<void> {
     const user = await authRepository.findById(userId);
     if (!user) {
@@ -128,10 +129,17 @@ export const authService = {
     await authRepository.updatePassword(userId, newHash);
   },
 
+  /** Mencabut seluruh sesi JWT aktif pengguna dengan menaikkan `tokenVersion`. */
   async logout(userId: string): Promise<void> {
     await authRepository.revokeSessions(userId);
   },
 
+  /**
+   * Mengunggah foto profil hasil crop ke Cloudinary folder pengguna, membersihkan foto lama,
+   * dan melakukan rollback aset terunggah bila pembaruan database gagal.
+   *
+   * @throws {NotFoundError} Bila akun pengguna tidak ditemukan.
+   */
   async uploadAvatar(userId: string, dataUrl: string): Promise<UserResponse> {
     const user = await authRepository.findById(userId);
     if (!user) throw new NotFoundError("Pengguna tidak ditemukan.");
@@ -165,6 +173,7 @@ export const authService = {
     }
   },
 
+  /** Memperbarui password akun dari token reset 30 menit sekali pakai dan menandai token telah terpakai. */
   async resetPassword(token: string, newPassword: string): Promise<void> {
     const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
     const reset = await authRepository.findPasswordResetToken(tokenHash);
@@ -242,6 +251,7 @@ export const authService = {
     };
   },
 
+  /** Memverifikasi token undangan 24 jam dan mengembalikan ringkasan email, role, pengundang, serta kedaluwarsa. */
   async getInviteInfo(token: string) {
     const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
     const invitation = await authRepository.findInvitationByToken(tokenHash, token);

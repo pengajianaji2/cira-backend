@@ -5,7 +5,9 @@ import { assetsRepository } from "./assets.repository.js";
 import { CreateAssetUploadDto, CreateDesignAssetDto } from "./assets.types.js";
 import { cloudinaryStorage } from "./cloudinary.service.js";
 
+/** Service pengelolaan aset desain proyek menggunakan alur direct upload bertanda tangan Cloudinary. */
 export const assetsService = {
+  /** Mengambil daftar aset desain proyek beserta URL pengiriman bertanda tangan. */
   async getProjectAssets(projectId: string) {
     const project = await assetsRepository.findProjectById(projectId);
     if (!project) {
@@ -16,6 +18,7 @@ export const assetsService = {
     return assets.map((asset) => ({ ...asset, dataUrl: cloudinaryStorage.deliveryUrl(asset.storageReference) }));
   },
 
+  /** Menerbitkan signature direct upload Cloudinary berumur singkat dengan UUID `publicId` khusus folder proyek. */
   async createUploadSignature(projectId: string, input: CreateAssetUploadDto) {
     const project = await assetsRepository.findProjectById(projectId);
     if (!project) throw new NotFoundError(`Proyek dengan ID '${projectId}' tidak ditemukan.`);
@@ -24,6 +27,7 @@ export const assetsService = {
     return cloudinaryStorage.createUploadSignature(folder, publicId);
   },
 
+  /** Menghapus unggahan sementara Cloudinary yatim jika belum tercatat sebagai aset desain proyek di DB. */
   async cleanupOrphanUpload(projectId: string, publicId: string) {
     const project = await assetsRepository.findProjectById(projectId);
     if (!project) throw new NotFoundError(`Proyek dengan ID '${projectId}' tidak ditemukan.`);
@@ -37,6 +41,7 @@ export const assetsService = {
     }
   },
 
+  /** Memverifikasi objek terunggah (format & batas 2 MB) di Cloudinary lalu menyimpan metadata aset beserta log aktivitas. */
   async createAsset(
     projectId: string,
     dto: CreateDesignAssetDto,
@@ -84,6 +89,7 @@ export const assetsService = {
     }
   },
 
+  /** Menghapus aset desain proyek, mencatat log aktivitas, lalu membersihkan objek di Cloudinary. */
   async deleteAsset(id: string, user?: AuthUserPayload) {
     const existing = await assetsRepository.findById(id);
     if (!existing) {
