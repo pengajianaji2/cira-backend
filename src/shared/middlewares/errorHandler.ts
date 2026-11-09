@@ -4,7 +4,7 @@ import { env } from "../../config/env.config.js";
 
 export const errorHandler: ErrorRequestHandler = (
   err: any,
-  _req: Request,
+  req: Request,
   res: Response,
   _next: NextFunction
 ): void => {
@@ -28,13 +28,24 @@ export const errorHandler: ErrorRequestHandler = (
     message = "Data yang diminta tidak ditemukan.";
   }
 
-  if (env.NODE_ENV === "development" && statusCode >= 500) {
-    console.error("💥 Server Error:", err);
+  const requestId = res.locals.requestId as string | undefined;
+  if (statusCode >= 500) {
+    console.error(JSON.stringify({
+      level: "error",
+      event: "http_request_failed",
+      requestId,
+      method: req.method,
+      path: req.path,
+      statusCode,
+      errorName: typeof err?.name === "string" ? err.name : "UnknownError",
+      errorCode: typeof err?.code === "string" ? err.code : undefined,
+    }));
   }
 
   res.status(statusCode).json({
     success: false,
     message,
     error: errorDetails,
+    requestId,
   });
 };

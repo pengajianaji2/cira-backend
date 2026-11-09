@@ -22,6 +22,11 @@ export const projectQuerySchema = z.object({
   search: z.string().max(200).optional(),
 });
 
+export const projectListingQuerySchema = projectQuerySchema.extend({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+});
+
 export const projectIdParamSchema = z.object({
   id: z.string().min(1, "ID proyek wajib disertakan"),
 });

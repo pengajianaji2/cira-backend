@@ -22,3 +22,8 @@ export interface ProjectQueryFilter {
   status?: ProjectStatus;
   search?: string;
 }
+
+export interface ProjectListingQuery extends ProjectQueryFilter {
+  page: number;
+  limit: number;
+}

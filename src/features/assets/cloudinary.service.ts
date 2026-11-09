@@ -38,6 +38,38 @@ export const cloudinaryStorage = {
     return `${markerPrefix}${uploaded.resource_type}:${uploaded.format}:${uploaded.public_id}`;
   },
 
+  createUploadSignature(folder: string, publicId: string) {
+    configure();
+    const timestamp = Math.floor(Date.now() / 1000);
+    const params = { folder, public_id: publicId, timestamp, type: "authenticated" };
+    return {
+      ...params,
+      signature: cloudinary.utils.api_sign_request(params, env.CLOUDINARY_API_SECRET!),
+      apiKey: env.CLOUDINARY_API_KEY!,
+      cloudName: env.CLOUDINARY_CLOUD_NAME!,
+    };
+  },
+
+  async verifyUpload(folder: string, publicId: string) {
+    configure();
+    let resource;
+    try {
+      resource = await cloudinary.api.resource(publicId, { resource_type: "image", type: "authenticated" });
+    } catch {
+      resource = await cloudinary.api.resource(`${folder}/${publicId}`, { resource_type: "image", type: "authenticated" });
+    }
+    const actualFolder = resource.folder ?? resource.asset_folder;
+    const expectedPublicId = resource.public_id === publicId || resource.public_id === `${folder}/${publicId}`;
+    if (actualFolder !== folder || !expectedPublicId) {
+      throw new Error("Unggahan Cloudinary tidak sesuai dengan otorisasi.");
+    }
+    return resource as { bytes: number; format: string; resource_type: string; public_id: string };
+  },
+
+  toStoredReference(resourceType: string, format: string, publicId: string): string {
+    return `${markerPrefix}${resourceType}:${format}:${publicId}`;
+  },
+
   deliveryUrl(reference: string): string {
     if (!this.isStoredReference(reference)) return reference;
     configure();

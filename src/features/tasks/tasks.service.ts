@@ -81,31 +81,33 @@ export const tasksService = {
       order = await tasksRepository.getNextOrder(projectId, status);
     }
 
-    const task = await tasksRepository.create(projectId, {
-      ...dto,
-      status,
-      sprintId,
-      order,
-    });
+    return tasksRepository.transaction(async (tx) => {
+      const task = await tasksRepository.create(projectId, {
+        ...dto,
+        status,
+        sprintId,
+        order,
+      }, tx);
 
-    await tasksRepository.logActivity({
-      projectId,
-      category: "task",
-      action: "CREATE",
-      description: `Task "${task.title}" dibuat di daftar ${sprintId ? "Sprint" : "Backlog"} dengan status ${task.status}.`,
-      userId: user?.id,
-      userName: user?.name,
-      userRole: user?.roles?.[0],
-      metadata: {
-        taskId: task.id,
-        status: task.status,
-        priority: task.priority,
-        storyPoints: task.storyPoints,
-        sprintId: task.sprintId,
-      },
-    });
+      await tasksRepository.logActivity({
+        projectId,
+        category: "task",
+        action: "CREATE",
+        description: `Task "${task.title}" dibuat di daftar ${sprintId ? "Sprint" : "Backlog"} dengan status ${task.status}.`,
+        userId: user?.id,
+        userName: user?.name,
+        userRole: user?.roles?.[0],
+        metadata: {
+          taskId: task.id,
+          status: task.status,
+          priority: task.priority,
+          storyPoints: task.storyPoints,
+          sprintId: task.sprintId,
+        },
+      }, tx);
 
-    return task;
+      return task;
+    });
   },
 
   /**
@@ -127,28 +129,20 @@ export const tasksService = {
       order = await tasksRepository.getNextOrder(existing.projectId, dto.status);
     }
 
-    const updated = await tasksRepository.update(id, {
-      status: dto.status,
-      order,
+    return tasksRepository.transaction(async (tx) => {
+      const updated = await tasksRepository.update(id, { status: dto.status, order }, tx);
+      await tasksRepository.logActivity({
+        projectId: existing.projectId,
+        category: "task",
+        action: "STATUS_CHANGE",
+        description: `Status task "${existing.title}" diubah dari "${existing.status}" menjadi "${dto.status}".`,
+        userId: user?.id,
+        userName: user?.name,
+        userRole: user?.roles?.[0],
+        metadata: { taskId: id, previousStatus: existing.status, newStatus: dto.status, order },
+      }, tx);
+      return updated;
     });
-
-    await tasksRepository.logActivity({
-      projectId: existing.projectId,
-      category: "task",
-      action: "STATUS_CHANGE",
-      description: `Status task "${existing.title}" diubah dari "${existing.status}" menjadi "${dto.status}".`,
-      userId: user?.id,
-      userName: user?.name,
-      userRole: user?.roles?.[0],
-      metadata: {
-        taskId: id,
-        previousStatus: existing.status,
-        newStatus: dto.status,
-        order,
-      },
-    });
-
-    return updated;
   },
 
   /**
@@ -171,24 +165,20 @@ export const tasksService = {
 
     // Jika dipindahkan ke Backlog (targetSprintId === null)
     if (!targetSprintId) {
-      const updated = await tasksRepository.update(id, { sprintId: null });
-
-      await tasksRepository.logActivity({
-        projectId: existing.projectId,
-        category: "task",
-        action: "MOVE_TO_BACKLOG",
-        description: `Task "${existing.title}" dipindahkan ke Backlog.`,
-        userId: user?.id,
-        userName: user?.name,
-        userRole: user?.roles?.[0],
-        metadata: {
-          taskId: id,
-          previousSprintId: existing.sprintId,
-          newSprintId: null,
-        },
+      return tasksRepository.transaction(async (tx) => {
+        const updated = await tasksRepository.update(id, { sprintId: null }, tx);
+        await tasksRepository.logActivity({
+          projectId: existing.projectId,
+          category: "task",
+          action: "MOVE_TO_BACKLOG",
+          description: `Task "${existing.title}" dipindahkan ke Backlog.`,
+          userId: user?.id,
+          userName: user?.name,
+          userRole: user?.roles?.[0],
+          metadata: { taskId: id, previousSprintId: existing.sprintId, newSprintId: null },
+        }, tx);
+        return updated;
       });
-
-      return updated;
     }
 
     // Jika dipindahkan ke Sprint
@@ -205,25 +195,25 @@ export const tasksService = {
       throw new BadRequestError("Sprint yang sudah selesai (completed) tidak dapat menerima task baru.");
     }
 
-    const updated = await tasksRepository.update(id, { sprintId: targetSprintId });
-
-    await tasksRepository.logActivity({
-      projectId: existing.projectId,
-      category: "task",
-      action: "MOVE_TO_SPRINT",
-      description: `Task "${existing.title}" dipindahkan ke sprint "${targetSprint.name}".`,
-      userId: user?.id,
-      userName: user?.name,
-      userRole: user?.roles?.[0],
-      metadata: {
-        taskId: id,
-        previousSprintId: existing.sprintId,
-        newSprintId: targetSprintId,
-        targetSprintStatus: targetSprint.status,
-      },
+    return tasksRepository.transaction(async (tx) => {
+      const updated = await tasksRepository.update(id, { sprintId: targetSprintId }, tx);
+      await tasksRepository.logActivity({
+        projectId: existing.projectId,
+        category: "task",
+        action: "MOVE_TO_SPRINT",
+        description: `Task "${existing.title}" dipindahkan ke sprint "${targetSprint.name}".`,
+        userId: user?.id,
+        userName: user?.name,
+        userRole: user?.roles?.[0],
+        metadata: {
+          taskId: id,
+          previousSprintId: existing.sprintId,
+          newSprintId: targetSprintId,
+          targetSprintStatus: targetSprint.status,
+        },
+      }, tx);
+      return updated;
     });
-
-    return updated;
   },
 
   /**
@@ -252,27 +242,26 @@ export const tasksService = {
       }
     }
 
-    const updated = await tasksRepository.update(id, dto);
-
     const isStatusChanged = dto.status && dto.status !== existing.status;
-
-    await tasksRepository.logActivity({
-      projectId: existing.projectId,
-      category: "task",
-      action: isStatusChanged ? "STATUS_CHANGE" : "UPDATE",
-      description: isStatusChanged
-        ? `Status task "${existing.title}" diubah menjadi "${dto.status}".`
-        : `Task "${updated.title}" diperbarui.`,
-      userId: user?.id,
-      userName: user?.name,
-      userRole: user?.roles?.[0],
-      metadata: {
-        taskId: id,
-        changes: dto,
-      },
+    return tasksRepository.transaction(async (tx) => {
+      const updated = await tasksRepository.update(id, dto, tx);
+      await tasksRepository.logActivity({
+        projectId: existing.projectId,
+        category: "task",
+        action: isStatusChanged ? "STATUS_CHANGE" : "UPDATE",
+        description: isStatusChanged
+          ? `Status task "${existing.title}" diubah menjadi "${dto.status}".`
+          : `Task "${updated.title}" diperbarui.`,
+        userId: user?.id,
+        userName: user?.name,
+        userRole: user?.roles?.[0],
+        metadata: {
+          taskId: id,
+          changes: Object.fromEntries(Object.entries(dto).filter(([, value]) => value !== undefined)),
+        },
+      }, tx);
+      return updated;
     });
-
-    return updated;
   },
 
   /**
@@ -289,22 +278,19 @@ export const tasksService = {
       throw new NotFoundError(`Task dengan ID '${id}' tidak ditemukan.`);
     }
 
-    await tasksRepository.delete(id);
-
-    await tasksRepository.logActivity({
-      projectId: existing.projectId,
-      category: "task",
-      action: "DELETE",
-      description: `Task "${existing.title}" dihapus.`,
-      userId: user?.id,
-      userName: user?.name,
-      userRole: user?.roles?.[0],
-      metadata: {
-        taskId: id,
-        title: existing.title,
-      },
+    return tasksRepository.transaction(async (tx) => {
+      await tasksRepository.delete(id, tx);
+      await tasksRepository.logActivity({
+        projectId: existing.projectId,
+        category: "task",
+        action: "DELETE",
+        description: `Task "${existing.title}" dihapus.`,
+        userId: user?.id,
+        userName: user?.name,
+        userRole: user?.roles?.[0],
+        metadata: { taskId: id, title: existing.title },
+      }, tx);
+      return existing;
     });
-
-    return existing;
   },
 };

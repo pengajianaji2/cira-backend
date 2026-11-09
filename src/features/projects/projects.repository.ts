@@ -1,7 +1,45 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../config/db.config.js";
-import { CreateProjectDto, ProjectQueryFilter, UpdateProjectDto } from "./projects.types.js";
+import { CreateProjectDto, ProjectListingQuery, ProjectQueryFilter, UpdateProjectDto } from "./projects.types.js";
 
 export const projectsRepository = {
+  async findPage(filters: ProjectListingQuery) {
+    const where: Prisma.ProjectWhereInput = {
+      ...(filters.status ? { status: filters.status } : {}),
+      ...(filters.search ? {
+        OR: [
+          { name: { contains: filters.search, mode: "insensitive" } },
+          { clientName: { contains: filters.search, mode: "insensitive" } },
+        ],
+      } : {}),
+    };
+    const countsWhere: Prisma.ProjectWhereInput = filters.search ? {
+      OR: [
+        { name: { contains: filters.search, mode: "insensitive" } },
+        { clientName: { contains: filters.search, mode: "insensitive" } },
+      ],
+    } : {};
+    const [items, total, groupedCounts] = await Promise.all([
+      prisma.project.findMany({
+        where,
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        skip: (filters.page - 1) * filters.limit,
+        take: filters.limit,
+        include: {
+          owner: { select: { id: true, name: true, email: true, avatarUrl: true } },
+          _count: { select: { tasks: true, payments: true, roster: true, repositoryLinks: true, prdVersions: true } },
+        },
+      }),
+      prisma.project.count({ where }),
+      prisma.project.groupBy({ by: ["status"], where: countsWhere, _count: { _all: true } }),
+    ]);
+    return {
+      items,
+      total,
+      counts: Object.fromEntries(groupedCounts.map(({ status, _count }) => [status, _count._all])),
+    };
+  },
+
   async findMany(filters: ProjectQueryFilter) {
     const where: any = {};
 
@@ -122,8 +160,8 @@ export const projectsRepository = {
     });
   },
 
-  async create(data: CreateProjectDto & { ownerId?: string }) {
-    return prisma.project.create({
+  async create(data: CreateProjectDto & { ownerId?: string }, tx: Prisma.TransactionClient = prisma) {
+    return tx.project.create({
       data: {
         name: data.name,
         clientName: data.clientName,
@@ -147,8 +185,8 @@ export const projectsRepository = {
     });
   },
 
-  async update(id: string, data: UpdateProjectDto) {
-    return prisma.project.update({
+  async update(id: string, data: UpdateProjectDto, tx: Prisma.TransactionClient = prisma) {
+    return tx.project.update({
       where: { id },
       data,
       include: {
@@ -164,8 +202,8 @@ export const projectsRepository = {
     });
   },
 
-  async updateContractValue(id: string, contractValue: number) {
-    return prisma.project.update({ where: { id }, data: { contractValue } });
+  async updateContractValue(id: string, contractValue: number, tx: Prisma.TransactionClient = prisma) {
+    return tx.project.update({ where: { id }, data: { contractValue } });
   },
 
   async logActivity(data: {
@@ -176,9 +214,9 @@ export const projectsRepository = {
     userId?: string;
     userName?: string;
     userRole?: string;
-    metadata?: any;
-  }) {
-    return prisma.activityLog.create({
+    metadata?: Prisma.InputJsonValue;
+  }, tx: Prisma.TransactionClient = prisma) {
+    return tx.activityLog.create({
       data: {
         projectId: data.projectId,
         category: data.category,

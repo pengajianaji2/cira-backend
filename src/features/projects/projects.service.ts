@@ -3,7 +3,7 @@ import { promisify } from "node:util";
 import { NotFoundError } from "../../shared/errors/AppError.js";
 import { AuthUserPayload } from "../../shared/middlewares/auth.middleware.js";
 import { projectsRepository } from "./projects.repository.js";
-import { CreateProjectDto, ProjectQueryFilter, UpdateProjectDto } from "./projects.types.js";
+import { CreateProjectDto, ProjectListingQuery, ProjectQueryFilter, UpdateProjectDto } from "./projects.types.js";
 import { cloudinaryStorage } from "../assets/cloudinary.service.js";
 import { prisma } from "../../config/db.config.js";
 
@@ -40,6 +40,17 @@ export const projectsService = {
     return (await projectsRepository.findMany(filters)).map((project) => ({ ...project, contractValue: Number(project.contractValue) }));
   },
 
+  async getProjectPage(filters: ProjectListingQuery) {
+    const result = await projectsRepository.findPage(filters);
+    return {
+      ...result,
+      items: result.items.map((project) => ({ ...project, contractValue: Number(project.contractValue) })),
+      page: filters.page,
+      pageSize: filters.limit,
+      totalPages: Math.ceil(result.total / filters.limit),
+    };
+  },
+
   /**
    * Mengambil detail proyek beserta relasi tasks, pembayaran terformat signed URL, dan nilai kontrak numerik.
    *
@@ -70,23 +81,6 @@ export const projectsService = {
   async createProject(dto: CreateProjectDto, user?: AuthUserPayload) {
     const prdContent = dto.prdContent || generateDefaultPrdContent(dto.name, dto.clientName);
 
-    const project = await projectsRepository.create({
-      ...dto,
-      prdContent,
-      ownerId: user?.id,
-    });
-
-    // Otomatis daftarkan pembuat proyek ke ProjectRoster (US-2)
-    if (user?.id) {
-      await prisma.projectRoster.create({
-        data: {
-          projectId: project.id,
-          userId: user.id,
-          roleInProject: user.roles?.[0] || "owner",
-        },
-      });
-    }
-
     // Buat snapshot Versi #1 PRD terkompresi GZIP (AC-B2-4)
     const compressedPrd = await gzipAsync(Buffer.from(prdContent, "utf-8"));
     const uint8Prd = new Uint8Array(
@@ -95,31 +89,43 @@ export const projectsService = {
       compressedPrd.byteLength
     ) as Uint8Array<ArrayBuffer>;
 
-    await prisma.prdVersion.create({
-      data: {
-        projectId: project.id,
-        versionNumber: 1,
-        compressedContent: uint8Prd,
-        charCount: prdContent.length,
-        description: "Versi Awal PRD",
-        createdById: user?.id,
-      },
-    });
+    const project = await prisma.$transaction(async (tx) => {
+      const created = await projectsRepository.create({ ...dto, prdContent, ownerId: user?.id }, tx);
 
-    await projectsRepository.logActivity({
-      projectId: project.id,
-      category: "project",
-      action: "CREATE",
-      description: `Proyek "${project.name}" berhasil dibuat.`,
-      userId: user?.id,
-      userName: user?.name,
-      userRole: user?.roles?.[0],
-      metadata: {
-        clientName: project.clientName,
-        contractValue: Number(project.contractValue),
-        status: project.status,
-        repoType: project.repoType,
-      },
+      if (user?.id) {
+        await tx.projectRoster.create({
+          data: { projectId: created.id, userId: user.id, roleInProject: user.roles?.[0] || "owner" },
+        });
+      }
+
+      await tx.prdVersion.create({
+        data: {
+          projectId: created.id,
+          versionNumber: 1,
+          compressedContent: uint8Prd,
+          charCount: prdContent.length,
+          description: "Versi Awal PRD",
+          createdById: user?.id,
+        },
+      });
+
+      await projectsRepository.logActivity({
+        projectId: created.id,
+        category: "project",
+        action: "CREATE",
+        description: `Proyek "${created.name}" berhasil dibuat.`,
+        userId: user?.id,
+        userName: user?.name,
+        userRole: user?.roles?.[0],
+        metadata: {
+          clientName: created.clientName,
+          contractValue: Number(created.contractValue),
+          status: created.status,
+          repoType: created.repoType,
+        },
+      }, tx);
+
+      return created;
     });
 
     return { ...project, contractValue: Number(project.contractValue) };
@@ -132,62 +138,54 @@ export const projectsService = {
       throw new NotFoundError(`Proyek dengan ID '${id}' tidak ditemukan.`);
     }
 
-    const updated = await projectsRepository.update(id, dto);
-
-    let loggedPrdChange = false;
-    if (dto.prdContent !== undefined && dto.prdContent !== existing.prdContent) {
-      // Simpan riwayat versi PRD terkompresi GZIP jika ada perubahan teks PRD
-      const latest = await prisma.prdVersion.findFirst({
-        where: { projectId: id },
-        orderBy: { versionNumber: "desc" },
-      });
-      const nextVersionNumber = (latest?.versionNumber ?? 0) + 1;
-      const compressedPrd = await gzipAsync(Buffer.from(dto.prdContent, "utf-8"));
-      const uint8Prd = new Uint8Array(
-        compressedPrd.buffer,
-        compressedPrd.byteOffset,
-        compressedPrd.byteLength
-      ) as Uint8Array<ArrayBuffer>;
-
-      await prisma.prdVersion.create({
-        data: {
-          projectId: id,
-          versionNumber: nextVersionNumber,
-          compressedContent: uint8Prd,
-          charCount: dto.prdContent.length,
-          description: `Pembaruan PRD #${nextVersionNumber}`,
-          createdById: user?.id,
-        },
-      });
-
-      await projectsRepository.logActivity({
-        projectId: id,
-        category: "project",
-        action: "PRD_UPDATE",
-        description: `Dokumen PRD spesifikasi proyek diperbarui (Versi #${nextVersionNumber}).`,
-        userId: user?.id,
-        userName: user?.name,
-        userRole: user?.roles?.[0],
-        metadata: {
-          versionNumber: nextVersionNumber,
-          charCount: dto.prdContent.length,
-        },
-      });
-      loggedPrdChange = true;
-    }
+    const prdChanged = dto.prdContent !== undefined && dto.prdContent !== existing.prdContent;
+    const compressedPrd = prdChanged ? await gzipAsync(Buffer.from(dto.prdContent!, "utf-8")) : undefined;
+    const uint8Prd = compressedPrd
+      ? new Uint8Array(compressedPrd.buffer, compressedPrd.byteOffset, compressedPrd.byteLength) as Uint8Array<ArrayBuffer>
+      : undefined;
     const otherChanges = Object.fromEntries(Object.entries(dto).filter(([key]) => key !== "prdContent"));
-    if (Object.keys(otherChanges).length || !loggedPrdChange) {
-      await projectsRepository.logActivity({
-        projectId: id,
-        category: "project",
-        action: "UPDATE",
-        description: `Informasi proyek "${updated.name}" diperbarui.`,
-        userId: user?.id,
-        userName: user?.name,
-        userRole: user?.roles?.[0],
-        metadata: otherChanges,
-      });
-    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const result = await projectsRepository.update(id, dto, tx);
+      let nextVersionNumber: number | undefined;
+      if (prdChanged && uint8Prd) {
+        const latest = await tx.prdVersion.findFirst({ where: { projectId: id }, orderBy: { versionNumber: "desc" } });
+        nextVersionNumber = (latest?.versionNumber ?? 0) + 1;
+        await tx.prdVersion.create({
+          data: {
+            projectId: id,
+            versionNumber: nextVersionNumber,
+            compressedContent: uint8Prd,
+            charCount: dto.prdContent!.length,
+            description: `Pembaruan PRD #${nextVersionNumber}`,
+            createdById: user?.id,
+          },
+        });
+        await projectsRepository.logActivity({
+          projectId: id,
+          category: "project",
+          action: "PRD_UPDATE",
+          description: `Dokumen PRD spesifikasi proyek diperbarui (Versi #${nextVersionNumber}).`,
+          userId: user?.id,
+          userName: user?.name,
+          userRole: user?.roles?.[0],
+          metadata: { versionNumber: nextVersionNumber, charCount: dto.prdContent!.length },
+        }, tx);
+      }
+      if (Object.keys(otherChanges).length || !prdChanged) {
+        await projectsRepository.logActivity({
+          projectId: id,
+          category: "project",
+          action: "UPDATE",
+          description: `Informasi proyek "${result.name}" diperbarui.`,
+          userId: user?.id,
+          userName: user?.name,
+          userRole: user?.roles?.[0],
+          metadata: otherChanges,
+        }, tx);
+      }
+      return result;
+    });
 
     return { ...updated, contractValue: Number(updated.contractValue) };
   },
@@ -196,16 +194,19 @@ export const projectsService = {
   async updateContractValue(id: string, contractValue: number, user?: AuthUserPayload) {
     const existing = await projectsRepository.findById(id);
     if (!existing) throw new NotFoundError(`Proyek dengan ID '${id}' tidak ditemukan.`);
-    const updated = await projectsRepository.updateContractValue(id, contractValue);
-    await projectsRepository.logActivity({
-      projectId: id,
-      category: "finance",
-      action: "CONTRACT_VALUE_CHANGE",
-      description: `Nilai kontrak proyek diperbarui.`,
-      userId: user?.id,
-      userName: user?.name,
-      userRole: user?.roles?.[0],
-      metadata: { previousValue: Number(existing.contractValue), newValue: contractValue },
+    const updated = await prisma.$transaction(async (tx) => {
+      const result = await projectsRepository.updateContractValue(id, contractValue, tx);
+      await projectsRepository.logActivity({
+        projectId: id,
+        category: "finance",
+        action: "CONTRACT_VALUE_CHANGE",
+        description: `Nilai kontrak proyek diperbarui.`,
+        userId: user?.id,
+        userName: user?.name,
+        userRole: user?.roles?.[0],
+        metadata: { previousValue: Number(existing.contractValue), newValue: contractValue },
+      }, tx);
+      return result;
     });
     return { contractValue: Number(updated.contractValue) };
   },
