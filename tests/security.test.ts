@@ -130,11 +130,38 @@ test("query validation stores coerced values without assigning Express 5's gette
   assert.equal(response.locals.validatedQuery.limit, 20);
 });
 
-test("login rate limiter allows ten attempts and rejects the next request from the same IP", () => {
-  let denied: unknown;
-  for (let i = 0; i < 11; i += 1) {
-    loginRateLimit({ ip: "198.51.100.12", socket: {} } as never, {} as never, (error) => { denied = error; });
+test("login rate limiter allows ten attempts and rejects the next request from the same IP", async (t) => {
+  const originalQueryRaw = prisma.$queryRaw;
+  const originalExecuteRaw = prisma.$executeRaw;
+  let attempts = 0;
+
+  (prisma as any).$queryRaw = async () => {
+    attempts += 1;
+    return [{ count: attempts }];
+  };
+  (prisma as any).$executeRaw = async () => 0;
+
+  t.after(() => {
+    (prisma as any).$queryRaw = originalQueryRaw;
+    (prisma as any).$executeRaw = originalExecuteRaw;
+  });
+
+  for (let i = 0; i < 10; i += 1) {
+    let allowedError: unknown;
+    await loginRateLimit(
+      { ip: "198.51.100.12", socket: {} } as never,
+      {} as never,
+      (error) => { allowedError = error; }
+    );
+    assert.equal(allowedError, undefined);
   }
+
+  let denied: unknown;
+  await loginRateLimit(
+    { ip: "198.51.100.12", socket: {} } as never,
+    {} as never,
+    (error) => { denied = error; }
+  );
   assert.equal((denied as { statusCode: number }).statusCode, 429);
 });
 

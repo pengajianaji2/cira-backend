@@ -47,7 +47,7 @@ export const requireAuth = async (
       select: { id: true, email: true, name: true, roles: true, isActive: true, tokenVersion: true },
     });
 
-    if (!user || user.isActive === false || (decoded.tokenVersion ?? 0) !== user.tokenVersion) {
+    if (!user || user.isActive === false || (decoded.tokenVersion ?? 0) !== (user.tokenVersion ?? 0)) {
       return next(
         new UnauthorizedError("Akun Anda telah dinonaktifkan atau tidak ditemukan. Akses ditolak.")
       );

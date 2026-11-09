@@ -13,8 +13,8 @@ export interface CreateSprintDto {
 export interface UpdateSprintDto {
   name?: string;
   goal?: string;
-  startDate?: string;
-  endDate?: string;
+  startDate?: string | null;
+  endDate?: string | null;
 }
 
 export interface StartSprintDto {

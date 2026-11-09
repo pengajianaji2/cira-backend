@@ -165,7 +165,7 @@ test("US-4 / AC-4.1: getOperationalCalendar mengagregasikan Sprint, PaymentTerm 
   assert.equal(byId.has("sprint:spr-1"), true);
   assert.equal(byId.has("sprint:spr-nodate"), false);
   assert.equal(byId.get("sprint:spr-1")?.startAt, "2026-11-02");
-  assert.equal(byId.get("sprint:spr-1")?.href, "/projects/proj-1?tab=tasks");
+  assert.equal(byId.get("sprint:spr-1")?.href, "/projects/proj-1?tab=sprints");
 
   assert.equal(byId.get("payment_term:term-ready-1")?.href, "/projects/proj-1?tab=finance");
   assert.equal(byId.get("payment_term:term-ready-1")?.metadata?.amount, 15_000_000);

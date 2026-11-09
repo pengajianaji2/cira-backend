@@ -14,9 +14,14 @@ export const fibonacciStoryPointsSchema = z
 
 export const sprintStatusEnum = z.enum(["planning", "active", "completed"]);
 
+function isValidParsedDateString(value: string | null | undefined): boolean {
+  if (!value) return true;
+  return !Number.isNaN(new Date(value).getTime());
+}
+
 /**
  * BR-SPRINT-01 — Planning. Tanggal boleh kosong.
- * Jika start dan end keduanya ada, start <= end.
+ * Jika start dan end keduanya ada, wajib valid dan start <= end.
  */
 export const createSprintSchema = z
   .object({
@@ -24,6 +29,14 @@ export const createSprintSchema = z
     goal: z.string().max(2000).optional(),
     startDate: z.string().optional(),
     endDate: z.string().optional(),
+  })
+  .refine((data) => isValidParsedDateString(data.startDate), {
+    message: "Format tanggal mulai (startDate) tidak valid",
+    path: ["startDate"],
+  })
+  .refine((data) => isValidParsedDateString(data.endDate), {
+    message: "Format tanggal selesai (endDate) tidak valid",
+    path: ["endDate"],
   })
   .refine(
     (data) => {
@@ -42,8 +55,16 @@ export const updateSprintSchema = z
   .object({
     name: z.string().trim().min(1, "Nama sprint tidak boleh kosong").max(100).optional(),
     goal: z.string().max(2000).optional(),
-    startDate: z.string().optional(),
-    endDate: z.string().optional(),
+    startDate: z.string().nullable().optional(),
+    endDate: z.string().nullable().optional(),
+  })
+  .refine((data) => isValidParsedDateString(data.startDate), {
+    message: "Format tanggal mulai (startDate) tidak valid",
+    path: ["startDate"],
+  })
+  .refine((data) => isValidParsedDateString(data.endDate), {
+    message: "Format tanggal selesai (endDate) tidak valid",
+    path: ["endDate"],
   })
   .refine(
     (data) => {
@@ -65,6 +86,14 @@ export const startSprintSchema = z
   .object({
     startDate: z.string().min(1, "Tanggal mulai wajib diisi untuk aktivasi sprint"),
     endDate: z.string().min(1, "Tanggal selesai wajib diisi untuk aktivasi sprint"),
+  })
+  .refine((data) => isValidParsedDateString(data.startDate), {
+    message: "Format tanggal mulai (startDate) tidak valid",
+    path: ["startDate"],
+  })
+  .refine((data) => isValidParsedDateString(data.endDate), {
+    message: "Format tanggal selesai (endDate) tidak valid",
+    path: ["endDate"],
   })
   .refine(
     (data) => new Date(data.startDate) <= new Date(data.endDate),

@@ -5,17 +5,11 @@ import {
   AssignTasksToSprintDto,
   CloseSprintDto,
   CreateSprintDto,
-  FIBONACCI_POINTS,
   ProjectCumulativeProgress,
   SprintSummary,
   StartSprintDto,
   UpdateSprintDto,
 } from "./sprints.types.js";
-
-function isFibonacci(points: number | null | undefined): boolean {
-  if (points === null || points === undefined) return false;
-  return (FIBONACCI_POINTS as readonly number[]).includes(points);
-}
 
 /**
  * AC-4.4: Developer hanya diizinkan mengakses data sprint proyek yang terdaftar di rostrenya.
@@ -74,7 +68,7 @@ export const sprintsService = {
         projectId: sprint.projectId,
         name: sprint.name,
         goal: sprint.goal,
-        status: sprint.status as any,
+        status: sprint.status as SprintSummary["status"],
         startDate: sprint.startDate,
         endDate: sprint.endDate,
         completedAt: sprint.completedAt,
@@ -99,7 +93,7 @@ export const sprintsService = {
 
   /**
    * BR-SPRINT-01 — Planning. Tanggal boleh kosong.
-   * Jika start/end keduanya ada, pastikan start <= end.
+   * Jika start/end diisi, wajib valid dan start <= end.
    */
   async createSprint(projectId: string, dto: CreateSprintDto, user?: AuthUserPayload) {
     const project = await sprintsRepository.findProjectById(projectId);
@@ -109,10 +103,16 @@ export const sprintsService = {
 
     await assertSprintProjectAccess(project, user);
 
-    if (dto.startDate && dto.endDate) {
-      if (new Date(dto.startDate) > new Date(dto.endDate)) {
-        throw new BadRequestError("Tanggal mulai sprint tidak boleh melebihi tanggal selesai.");
-      }
+    const parsedStart = dto.startDate ? new Date(dto.startDate) : null;
+    if (parsedStart && Number.isNaN(parsedStart.getTime())) {
+      throw new BadRequestError("Format tanggal mulai tidak valid.");
+    }
+    const parsedEnd = dto.endDate ? new Date(dto.endDate) : null;
+    if (parsedEnd && Number.isNaN(parsedEnd.getTime())) {
+      throw new BadRequestError("Format tanggal selesai tidak valid.");
+    }
+    if (parsedStart && parsedEnd && parsedStart > parsedEnd) {
+      throw new BadRequestError("Tanggal mulai sprint tidak boleh melebihi tanggal selesai.");
     }
 
     const sprint = await sprintsRepository.create(projectId, dto);
@@ -162,7 +162,7 @@ export const sprintsService = {
     }
 
     // Validasi kelengkapan tanggal aktivasi (BR-SPRINT-02)
-    if (!dto.startDate || !dto.endDate) {
+    if (!dto?.startDate || !dto?.endDate) {
       throw new BadRequestError("Tanggal mulai dan tanggal selesai wajib diisi untuk mengaktifkan sprint.");
     }
 
@@ -237,7 +237,7 @@ export const sprintsService = {
     const result = await sprintsRepository.completeSprintAtomically(
       id,
       sprint.projectId,
-      dto.taskMoves || [],
+      dto?.taskMoves || [],
       new Date(),
       {
         id: user?.id,
@@ -261,8 +261,31 @@ export const sprintsService = {
       throw new BadRequestError("Sprint yang telah selesai tidak dapat diubah melalui pembaruan umum.");
     }
 
-    const finalStart = dto.startDate !== undefined ? dto.startDate : sprint.startDate?.toISOString();
-    const finalEnd = dto.endDate !== undefined ? dto.endDate : sprint.endDate?.toISOString();
+    if (dto.startDate) {
+      const parsedStart = new Date(dto.startDate);
+      if (Number.isNaN(parsedStart.getTime())) {
+        throw new BadRequestError("Format tanggal mulai tidak valid.");
+      }
+    }
+    if (dto.endDate) {
+      const parsedEnd = new Date(dto.endDate);
+      if (Number.isNaN(parsedEnd.getTime())) {
+        throw new BadRequestError("Format tanggal selesai tidak valid.");
+      }
+    }
+
+    const finalStart =
+      dto.startDate !== undefined
+        ? dto.startDate || undefined
+        : sprint.startDate?.toISOString();
+    const finalEnd =
+      dto.endDate !== undefined
+        ? dto.endDate || undefined
+        : sprint.endDate?.toISOString();
+
+    if (sprint.status === "active" && (!finalStart || !finalEnd)) {
+      throw new BadRequestError("Sprint aktif wajib memiliki tanggal mulai dan tanggal selesai.");
+    }
 
     if (finalStart && finalEnd) {
       if (new Date(finalStart) > new Date(finalEnd)) {
@@ -379,11 +402,6 @@ export const sprintsService = {
     await sprintsRepository.assignTasksToSprint(sprintId, dto.taskIds, sprint.projectId);
 
     return { success: true, count: dto.taskIds.length };
-  },
-
-  async removeTask(taskId: string, _user?: AuthUserPayload) {
-    const updated = await sprintsRepository.removeTaskFromSprint(taskId);
-    return updated;
   },
 
   async getProjectCumulativeProgress(
