@@ -3,6 +3,7 @@ import { sendSuccess } from "../../shared/utils/responseFormatter.js";
 import { operationsService } from "./operations.service.js";
 import { CalendarQueryFilters } from "./operations.types.js";
 
+/** HTTP controller untuk feed Kalender Operasional teragregasi dan CRUD agenda manual (`OperationalEvent`). */
 export const operationsController = {
   async getOperationalCalendar(req: Request, res: Response): Promise<Response> {
     const filters = (res.locals.validatedQuery ?? {}) as CalendarQueryFilters;

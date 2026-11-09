@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { sendSuccess } from "../../shared/utils/responseFormatter.js";
 import { projectsService } from "./projects.service.js";
 
+/** HTTP controller untuk CRUD proyek inti, pembaruan PRD, dan pembaruan nilai kontrak proyek. */
 export const projectsController = {
   async createProject(req: Request, res: Response): Promise<Response> {
     const project = await projectsService.createProject(req.body, req.user);

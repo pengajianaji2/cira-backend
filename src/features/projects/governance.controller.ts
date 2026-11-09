@@ -6,6 +6,7 @@ const getProjectId = (req: Request): string => {
   return (req.params.projectId || req.params.id) as string;
 };
 
+/** HTTP controller tata kelola proyek US-2: voting roster, pengajuan & arbitrase status, link repositori, dan versioning PRD GZIP. */
 export const governanceController = {
   // ==========================================
   // ROSTER CONTROLLERS

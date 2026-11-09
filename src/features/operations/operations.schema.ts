@@ -66,6 +66,10 @@ const optionalBoolQuerySchema = z.preprocess((value) => {
   return value;
 }, z.boolean().optional());
 
+/**
+ * Schema query filter `GET /api/v1/operations/calendar` (AC-4.5):
+ * memvalidasi pasangan `from`/`to` berformat `YYYY-MM-DD`, `from <= to`, serta batas maksimum rentang 90 hari.
+ */
 export const calendarQuerySchema = z
   .object({
     from: dateOnlySchema.optional(),
@@ -116,6 +120,10 @@ function isValidIsoInstant(value: string): boolean {
   return !Number.isNaN(parsed.getTime());
 }
 
+/**
+ * Schema validasi pembuatan agenda manual (`OperationalEvent`):
+ * mendukung acara `allDay` (`YYYY-MM-DD`) atau terjadwal ISO serta `projectId` nullable.
+ */
 export const createOperationalEventSchema = z
   .object({
     title: z
@@ -200,6 +208,7 @@ export const createOperationalEventSchema = z
     }
   });
 
+/** Schema validasi pembaruan atribut agenda manual operasional (`OperationalEvent`). */
 export const updateOperationalEventSchema = z
   .object({
     title: z
@@ -235,6 +244,7 @@ export const updateOperationalEventSchema = z
     }
   });
 
+/** Schema validasi pembatalan soft-status agenda operasional (`cancelled`) beserta alasan opsional. */
 export const cancelOperationalEventSchema = z
   .object({
     cancelReason: z.string().trim().max(1000).optional(),
@@ -242,6 +252,7 @@ export const cancelOperationalEventSchema = z
   .optional()
   .default({});
 
+/** Schema validasi pencatatan tindak lanjut (follow-up/reminder) manual pada agenda operasional. */
 export const recordReminderSchema = z
   .object({
     note: z.string().trim().max(1000).optional(),

@@ -142,6 +142,7 @@ function mapInvoiceToCalendarEvent(
   };
 }
 
+/** Service domain Kalender Operasional lintas modul (Sprint, Termin, Invoice, Agenda Manual) berbasis WIB. */
 export const operationsService = {
   /**
    * AC-4.1 & AC-4.5: Read-aggregation dinamis lintas Sprint, PaymentTerm readyAt,
@@ -314,6 +315,15 @@ export const operationsService = {
     };
   },
 
+  /**
+   * Membuat agenda operasional manual (`client_demo`, `deployment`, `maintenance`, `meeting`).
+   * Mendukung `projectId = null` (agenda internal agensi tanpa ActivityLog proyek).
+   *
+   * @param dto - Data agenda manual termasuk flag `allDay` atau waktu terjadwal `startAt`/`endAt`.
+   * @param user - Pengguna pembuat agenda.
+   * @throws {NotFoundError} Bila `projectId` diisi tetapi proyek tidak ditemukan.
+   * @throws {BadRequestError} Bila tanggal/waktu agenda tidak lengkap atau rentang terbalik.
+   */
   async createOperationalEvent(
     dto: CreateOperationalEventDto,
     user?: AuthUserPayload
@@ -362,6 +372,15 @@ export const operationsService = {
     return created;
   },
 
+  /**
+   * Memperbarui agenda operasional manual yang belum dibatalkan (`status !== 'cancelled'`).
+   *
+   * @param id - ID agenda operasional target.
+   * @param dto - Perubahan atribut atau jadwal agenda.
+   * @param user - Pengguna pelaku pembaruan.
+   * @throws {NotFoundError} Bila agenda atau proyek tujuan tidak ditemukan.
+   * @throws {BadRequestError} Bila agenda sudah dibatalkan atau jadwal baru tidak valid.
+   */
   async updateOperationalEvent(
     id: string,
     dto: UpdateOperationalEventDto,

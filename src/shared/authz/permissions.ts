@@ -1,3 +1,7 @@
+/**
+ * Katalog terpusat seluruh capability permission RBAC yang dapat dikonfigurasi per role
+ * oleh Owner melalui `/api/v1/policies`.
+ */
 export const PERMISSION_CATALOG = [
   { key: "projects.read", label: "Lihat proyek", group: "Proyek" },
   { key: "projects.create", label: "Buat proyek", group: "Proyek" },

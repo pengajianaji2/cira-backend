@@ -37,7 +37,17 @@ async function assertSprintProjectAccess(
   }
 }
 
+/** Service domain daur hidup sprint, otorisasi roster proyek untuk Developer, dan kalkulasi progres kumulatif. */
 export const sprintsService = {
+  /**
+   * Mengambil seluruh daftar sprint proyek terurut beserta metrik ringkas task & story points.
+   * Memvalidasi keanggotaan roster proyek apabila pengguna hanya berperan sebagai Developer.
+   *
+   * @param projectId - ID proyek target.
+   * @param user - Pengguna terautentikasi untuk pemeriksaan akses roster (AC-4.4).
+   * @throws {NotFoundError} Bila proyek tidak ditemukan.
+   * @throws {ForbiddenError} Bila Developer bukan anggota roster proyek.
+   */
   async getSprintsByProjectId(
     projectId: string,
     user?: AuthUserPayload
@@ -82,6 +92,14 @@ export const sprintsService = {
     });
   },
 
+  /**
+   * Mengambil detail satu sprint beserta daftar task di dalamnya setelah memverifikasi akses roster Developer.
+   *
+   * @param id - ID sprint target.
+   * @param user - Pengguna terautentikasi untuk pemeriksaan akses roster (AC-4.4).
+   * @throws {NotFoundError} Bila sprint tidak ditemukan.
+   * @throws {ForbiddenError} Bila Developer bukan anggota roster proyek.
+   */
   async getSprintById(id: string, user?: AuthUserPayload) {
     const sprint = await sprintsRepository.findById(id);
     if (!sprint) {
@@ -249,6 +267,7 @@ export const sprintsService = {
     return result;
   },
 
+  /** Memperbarui metadata atau jadwal sprint (`planning`/`active`), menolak pengubahan bila berstatus `completed`. */
   async updateSprint(id: string, dto: UpdateSprintDto, user?: AuthUserPayload) {
     const sprint = await sprintsRepository.findById(id);
     if (!sprint) {
@@ -309,6 +328,15 @@ export const sprintsService = {
     return updated;
   },
 
+  /**
+   * Membuka kembali sprint berstatus `completed` ke `planning` dan menghitung ulang progres proyek.
+   *
+   * @param id - ID sprint target.
+   * @param user - Pengguna pelaku aksi (diperiksa akses roster bila Developer).
+   * @throws {NotFoundError} Bila sprint tidak ditemukan.
+   * @throws {ForbiddenError} Bila Developer bukan anggota roster proyek.
+   * @throws {BadRequestError} Bila sprint bukan berstatus `completed`.
+   */
   async reopenSprint(id: string, user?: AuthUserPayload) {
     const sprint = await sprintsRepository.findById(id);
     if (!sprint) {
@@ -351,6 +379,7 @@ export const sprintsService = {
     };
   },
 
+  /** Menghapus sprint setelah verifikasi akses roster dan menghitung ulang progres kumulatif proyek. */
   async deleteSprint(id: string, user?: AuthUserPayload) {
     const sprint = await sprintsRepository.findById(id);
     if (!sprint) {
@@ -379,6 +408,7 @@ export const sprintsService = {
     return { success: true, cumulativeProgress: cumulative };
   },
 
+  /** Menambahkan sekumpulan task backlog/lain dalam proyek yang sama ke sprint non-completed target. */
   async assignTasks(sprintId: string, dto: AssignTasksToSprintDto, user?: AuthUserPayload) {
     const sprint = await sprintsRepository.findById(sprintId);
     if (!sprint) {
@@ -404,6 +434,14 @@ export const sprintsService = {
     return { success: true, count: dto.taskIds.length };
   },
 
+  /**
+   * Menghitung progres kumulatif proyek berbasis rasio `completedSprintCount / totalSprintCount * 100%` (AC-2.5).
+   *
+   * @param projectId - ID proyek target.
+   * @param user - Pengguna terautentikasi untuk pemeriksaan akses roster Developer.
+   * @throws {NotFoundError} Bila proyek tidak ditemukan.
+   * @throws {ForbiddenError} Bila Developer tidak terdaftar pada roster proyek.
+   */
   async getProjectCumulativeProgress(
     projectId: string,
     user?: AuthUserPayload
@@ -422,6 +460,7 @@ export const sprintsService = {
     };
   },
 
+  /** Menghitung ulang dan menyinkronkan nilai kolom `Project.progress` berbasis rasio sprint selesai. */
   async recalculateProjectProgress(projectId: string): Promise<number> {
     const cumulative = await sprintsRepository.calculateCumulativeProgress(projectId);
     await sprintsRepository.updateProjectProgress(projectId, cumulative.progress);

@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { sendSuccess } from "../../shared/utils/responseFormatter.js";
 import { financeService } from "./finance.service.js";
 
+/** HTTP controller untuk tata kelola kontrak 100%, pemicu termin, kesiapan BAST, penerbitan invoice resmi, pelunasan, dan catatan pembayaran proyek. */
 export const financeController = {
   async createProjectContract(req: Request, res: Response): Promise<Response> {
     const projectId = req.params.projectId as string;

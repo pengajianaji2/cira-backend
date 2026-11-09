@@ -14,6 +14,7 @@ export const taskStoryPointsSchema = z
     }
   );
 
+/** Schema validasi pembuatan task baru (`sprintId` opsional; kosong/null berarti Backlog proyek). */
 export const createTaskSchema = z.object({
   title: z.string().trim().min(1, "Judul task wajib diisi").max(255),
   description: z.string().max(20_000).optional(),
@@ -27,6 +28,7 @@ export const createTaskSchema = z.object({
   assigneeRole: z.string().optional(),
 });
 
+/** Schema validasi pembaruan atribut task (termasuk perpindahan `sprintId` dan penugasan opsional). */
 export const updateTaskSchema = z.object({
   title: z.string().trim().min(1, "Judul task tidak boleh kosong").max(255).optional(),
   description: z.string().max(20_000).optional(),
@@ -40,11 +42,13 @@ export const updateTaskSchema = z.object({
   assigneeRole: z.string().nullable().optional(),
 });
 
+/** Schema validasi transisi status checklist tunggal (`todo` atau `done`) dan urutan opsional. */
 export const updateTaskStatusSchema = z.object({
   status: taskStatusEnum,
   order: z.number().int().nonnegative().optional(),
 });
 
+/** Schema validasi pemindahan task ke Backlog (`targetSprintId = null`) atau sprint non-completed target. */
 export const moveTaskToSprintSchema = z.object({
   targetSprintId: z.string().nullable(),
 });

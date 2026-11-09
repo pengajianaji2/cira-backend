@@ -2,7 +2,9 @@ import { prisma } from "../../config/db.config.js";
 import { BadRequestError, ForbiddenError } from "../../shared/errors/AppError.js";
 import { DEFAULT_ROLE_POLICIES, PERMISSION_CATALOG, PermissionKey } from "../../shared/authz/permissions.js";
 
+/** Service pengelolaan permission matrix RBAC dinamis per role (`RolePolicy`) beserta histori audit perubahannya. */
 export const policiesService = {
+  /** Mengambil daftar lengkap policy permission untuk seluruh role standar (`owner`, `developer`, `operasional`). */
   async list() {
     const saved = await prisma.rolePolicy.findMany({ orderBy: { role: "asc" } });
     const byRole = new Map(saved.map((item) => [item.role, item.permissions]));
@@ -12,6 +14,7 @@ export const policiesService = {
     }));
   },
 
+  /** Memeriksa apakah gabungan role pengguna (`union` termasuk alias `ops`/`dev`) memiliki suatu permission. */
   async hasAny(roles: string[], permission: string): Promise<boolean> {
     const knownRoles = roles.map((role) => role === "ops" ? "operasional" : role === "dev" ? "developer" : role).filter((role) => role in DEFAULT_ROLE_POLICIES);
     if (!knownRoles.length) return false;
@@ -22,6 +25,7 @@ export const policiesService = {
     );
   },
 
+  /** Mengembalikan himpunan unik permission keys aktif hasil gabungan (`union`) seluruh role pengguna. */
   async forRoles(roles: string[]): Promise<string[]> {
     const knownRoles = roles.map((role) => role === "ops" ? "operasional" : role === "dev" ? "developer" : role).filter((role) => role in DEFAULT_ROLE_POLICIES);
     const records = await prisma.rolePolicy.findMany({ where: { role: { in: knownRoles } } });
@@ -29,6 +33,13 @@ export const policiesService = {
     return [...new Set(knownRoles.flatMap((role) => byRole.get(role) ?? DEFAULT_ROLE_POLICIES[role] ?? []))];
   },
 
+  /**
+   * Memperbarui daftar permission untuk role tertentu serta mencatat delta penambahan/pencabutan
+   * ke tabel `RolePolicyHistory` dalam satu transaksi Prisma.
+   *
+   * @throws {BadRequestError} Bila nama role atau salah satu permission key tidak valid.
+   * @throws {ForbiddenError} Bila mencoba mencabut `policies.manage` dari role `owner`.
+   */
   async update(actorId: string, role: string, permissions: string[]) {
     if (!(role in DEFAULT_ROLE_POLICIES)) throw new BadRequestError("Role tidak dikenal.");
     const valid = new Set(PERMISSION_CATALOG.map((item) => item.key));
@@ -57,6 +68,7 @@ export const policiesService = {
     });
   },
 
+  /** Mengambil 100 entri riwayat perubahan policy RBAC terbaru. */
   async history() {
     return prisma.rolePolicyHistory.findMany({ orderBy: { createdAt: "desc" }, take: 100 });
   },

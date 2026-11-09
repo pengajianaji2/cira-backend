@@ -21,6 +21,12 @@ declare global {
   }
 }
 
+/**
+ * Middleware autentikasi wajib berbasis JWT HS256 (HTTP-only cookie `token` atau header Bearer).
+ * Memverifikasi status akun aktif dan `tokenVersion` terhadap database.
+ *
+ * @throws {UnauthorizedError} Bila token hilang, tidak valid, kedaluwarsa, atau akun nonaktif.
+ */
 export const requireAuth = async (
   req: Request,
   _res: Response,
@@ -67,6 +73,11 @@ export const requireAuth = async (
   }
 };
 
+/**
+ * Middleware otorisasi yang mewajibkan minimal satu role pengguna memiliki `permission` tertentu dari policy aktif.
+ *
+ * @throws {ForbiddenError} Bila pengguna belum terautentikasi atau policy role menolak izin tersebut.
+ */
 export const requirePermission = (permission: string) => async (
   req: Request,
   _res: Response,
@@ -78,6 +89,7 @@ export const requirePermission = (permission: string) => async (
   next();
 };
 
+/** Middleware otorisasi yang meloloskan permintaan bila pengguna memiliki minimal satu dari daftar `permissions`. */
 export const requireAnyPermission = (...permissions: string[]) => async (
   req: Request,
   _res: Response,
@@ -94,6 +106,7 @@ export const requireAnyPermission = (...permissions: string[]) => async (
   return next(new ForbiddenError("Akses ditolak. Policy role tidak mengizinkan tindakan ini."));
 };
 
+/** Middleware otorisasi kondisional yang memeriksa `permission` hanya jika properti `field` dikirim di body request. */
 export const requirePermissionWhenPresent = (permission: string, field: string) => async (
   req: Request,
   _res: Response,
@@ -105,6 +118,7 @@ export const requirePermissionWhenPresent = (permission: string, field: string) 
   next();
 };
 
+/** Middleware otorisasi yang memastikan pengguna memiliki minimal satu dari `allowedRoles`. */
 export const requireAnyRole = (...allowedRoles: string[]) => (
   req: Request,
   _res: Response,

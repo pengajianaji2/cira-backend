@@ -10,6 +10,10 @@ import policiesRouter from "../features/auth/policies.routes.js";
 import operationsRouter from "../features/operations/operations.routes.js";
 import { prisma } from "../config/db.config.js";
 
+/**
+ * Agregator utama seluruh route REST API `/api/v1` (auth, policies, users, projects,
+ * tasks, sprints, payments, payment-terms, assets, operations) serta endpoint liveness/readiness.
+ */
 const apiRouter = Router();
 
 apiRouter.use("/auth", authRoutes);
