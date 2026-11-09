@@ -101,3 +101,14 @@ export const cloudinaryStorage = {
     }
   },
 };
+
+/** Menyelesaikan `avatarUrl` tersimpan (`cloudinary://...`) menjadi URL pengiriman HTTPS bertanda tangan. */
+export function withResolvedUserAvatar<T extends { avatarUrl?: string | null }>(
+  user: T | null | undefined,
+): T | null | undefined {
+  if (!user) return user;
+  return {
+    ...user,
+    avatarUrl: user.avatarUrl ? cloudinaryStorage.deliveryUrl(user.avatarUrl) : null,
+  };
+}

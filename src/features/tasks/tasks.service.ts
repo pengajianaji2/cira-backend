@@ -3,6 +3,7 @@ import { AuthUserPayload } from "../../shared/middlewares/auth.middleware.js";
 import { sprintsRepository } from "../sprints/sprints.repository.js";
 import { FIBONACCI_POINTS } from "../sprints/sprints.types.js";
 import { tasksRepository } from "./tasks.repository.js";
+import { withResolvedUserAvatar } from "../assets/cloudinary.service.js";
 import {
   CreateTaskDto,
   MoveTaskToSprintDto,
@@ -14,6 +15,13 @@ import {
 function isFibonacci(points: number | null | undefined): boolean {
   if (points === null || points === undefined) return false;
   return (FIBONACCI_POINTS as readonly number[]).includes(points);
+}
+
+function serializeTask<T extends { assignee?: { avatarUrl?: string | null } | null }>(task: T): T {
+  return {
+    ...task,
+    assignee: withResolvedUserAvatar(task.assignee),
+  };
 }
 
 export const tasksService = {
@@ -35,7 +43,7 @@ export const tasksService = {
     ]);
 
     return {
-      tasks,
+      tasks: tasks.map(serializeTask),
       hasVerifiedDp,
       dpWarning: !hasVerifiedDp,
     };
@@ -106,7 +114,7 @@ export const tasksService = {
         },
       }, tx);
 
-      return task;
+      return serializeTask(task);
     });
   },
 
@@ -141,7 +149,7 @@ export const tasksService = {
         userRole: user?.roles?.[0],
         metadata: { taskId: id, previousStatus: existing.status, newStatus: dto.status, order },
       }, tx);
-      return updated;
+      return serializeTask(updated);
     });
   },
 
@@ -177,7 +185,7 @@ export const tasksService = {
           userRole: user?.roles?.[0],
           metadata: { taskId: id, previousSprintId: existing.sprintId, newSprintId: null },
         }, tx);
-        return updated;
+        return serializeTask(updated);
       });
     }
 
@@ -212,7 +220,7 @@ export const tasksService = {
           targetSprintStatus: targetSprint.status,
         },
       }, tx);
-      return updated;
+      return serializeTask(updated);
     });
   },
 
@@ -260,7 +268,7 @@ export const tasksService = {
           changes: Object.fromEntries(Object.entries(dto).filter(([, value]) => value !== undefined)),
         },
       }, tx);
-      return updated;
+      return serializeTask(updated);
     });
   },
 
@@ -290,7 +298,7 @@ export const tasksService = {
         userRole: user?.roles?.[0],
         metadata: { taskId: id, title: existing.title },
       }, tx);
-      return existing;
+      return serializeTask(existing);
     });
   },
 };

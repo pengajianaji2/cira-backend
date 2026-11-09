@@ -1,6 +1,7 @@
 import { NotFoundError } from "../../shared/errors/AppError.js";
 import { AuthUserPayload } from "../../shared/middlewares/auth.middleware.js";
 import { activityRepository } from "./activity.repository.js";
+import { withResolvedUserAvatar } from "../assets/cloudinary.service.js";
 import { ActivityFilterQuery, CreateActivityDto } from "./activity.types.js";
 
 export const activityService = {
@@ -13,7 +14,10 @@ export const activityService = {
       throw new NotFoundError(`Proyek dengan ID '${projectId}' tidak ditemukan.`);
     }
 
-    return activityRepository.findByProjectId(projectId, filters);
+    return (await activityRepository.findByProjectId(projectId, filters)).map((activity) => ({
+      ...activity,
+      user: withResolvedUserAvatar(activity.user),
+    }));
   },
 
   async logActivity(
@@ -26,11 +30,15 @@ export const activityService = {
       throw new NotFoundError(`Proyek dengan ID '${projectId}' tidak ditemukan.`);
     }
 
-    return activityRepository.create(projectId, {
+    const created = await activityRepository.create(projectId, {
       ...dto,
       userId: user?.id,
       userName: user?.name,
       userRole: user?.roles?.[0],
     });
+    return {
+      ...created,
+      user: withResolvedUserAvatar(created.user),
+    };
   },
 };

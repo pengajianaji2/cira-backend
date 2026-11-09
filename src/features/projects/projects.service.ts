@@ -4,7 +4,7 @@ import { NotFoundError } from "../../shared/errors/AppError.js";
 import { AuthUserPayload } from "../../shared/middlewares/auth.middleware.js";
 import { projectsRepository } from "./projects.repository.js";
 import { CreateProjectDto, ProjectListingQuery, ProjectQueryFilter, UpdateProjectDto } from "./projects.types.js";
-import { cloudinaryStorage } from "../assets/cloudinary.service.js";
+import { cloudinaryStorage, withResolvedUserAvatar } from "../assets/cloudinary.service.js";
 import { prisma } from "../../config/db.config.js";
 
 const generateDefaultPrdContent = (projectName: string, clientName: string): string => {
@@ -37,14 +37,14 @@ export const projectsService = {
    * @param filters - Filter opsional status pipeline dan kata kunci pencarian.
    */
   async getAllProjects(filters: ProjectQueryFilter) {
-    return (await projectsRepository.findMany(filters)).map((project) => ({ ...project, contractValue: Number(project.contractValue) }));
+    return (await projectsRepository.findMany(filters)).map((project) => ({ ...project, contractValue: Number(project.contractValue), owner: withResolvedUserAvatar(project.owner) }));
   },
 
   async getProjectPage(filters: ProjectListingQuery) {
     const result = await projectsRepository.findPage(filters);
     return {
       ...result,
-      items: result.items.map((project) => ({ ...project, contractValue: Number(project.contractValue) })),
+      items: result.items.map((project) => ({ ...project, contractValue: Number(project.contractValue), owner: withResolvedUserAvatar(project.owner) })),
       page: filters.page,
       pageSize: filters.limit,
       totalPages: Math.ceil(result.total / filters.limit),
@@ -64,6 +64,18 @@ export const projectsService = {
     return {
       ...project,
       contractValue: Number(project.contractValue),
+      owner: withResolvedUserAvatar(project.owner),
+      roster: project.roster?.map((member) => ({
+        ...member,
+        user: withResolvedUserAvatar(member.user),
+      })),
+      statusRequests: project.statusRequests?.map((request) => ({
+        ...request,
+        votes: request.votes?.map((vote) => ({
+          ...vote,
+          user: withResolvedUserAvatar(vote.user),
+        })),
+      })),
       payments: project.payments?.map((payment) => ({
         ...payment,
         amount: Number(payment.amount),
@@ -128,7 +140,7 @@ export const projectsService = {
       return created;
     });
 
-    return { ...project, contractValue: Number(project.contractValue) };
+    return { ...project, contractValue: Number(project.contractValue), owner: withResolvedUserAvatar(project.owner) };
   },
 
   /** Memperbarui informasi proyek dan secara otomatis membuat arsip `PrdVersion` terkompresi GZIP bila `prdContent` berubah. */
@@ -187,7 +199,7 @@ export const projectsService = {
       return result;
     });
 
-    return { ...updated, contractValue: Number(updated.contractValue) };
+    return { ...updated, contractValue: Number(updated.contractValue), owner: withResolvedUserAvatar(updated.owner) };
   },
 
   /** Memperbarui nilai kontrak proyek (`contractValue`) secara khusus dan mencatat audit log perubahan keuangan. */

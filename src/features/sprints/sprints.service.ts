@@ -1,6 +1,7 @@
 import { BadRequestError, ForbiddenError, NotFoundError } from "../../shared/errors/AppError.js";
 import { AuthUserPayload } from "../../shared/middlewares/auth.middleware.js";
 import { sprintsRepository } from "./sprints.repository.js";
+import { withResolvedUserAvatar } from "../assets/cloudinary.service.js";
 import {
   AssignTasksToSprintDto,
   CloseSprintDto,
@@ -10,6 +11,18 @@ import {
   StartSprintDto,
   UpdateSprintDto,
 } from "./sprints.types.js";
+
+function serializeSprintWithAssignees<
+  T extends { tasks: Array<{ assignee?: { avatarUrl?: string | null } | null }> },
+>(sprint: T): T {
+  return {
+    ...sprint,
+    tasks: sprint.tasks.map((task) => ({
+      ...task,
+      assignee: withResolvedUserAvatar(task.assignee),
+    })),
+  };
+}
 
 /**
  * AC-4.4: Developer hanya diizinkan mengakses data sprint proyek yang terdaftar di rostrenya.
@@ -106,7 +119,7 @@ export const sprintsService = {
       throw new NotFoundError(`Sprint dengan ID '${id}' tidak ditemukan.`);
     }
     await assertSprintProjectAccess(sprint.project, user);
-    return sprint;
+    return serializeSprintWithAssignees(sprint);
   },
 
   /**
@@ -325,7 +338,7 @@ export const sprintsService = {
       metadata: { sprintId: id, changes: dto },
     });
 
-    return updated;
+    return serializeSprintWithAssignees(updated);
   },
 
   /**
@@ -374,7 +387,7 @@ export const sprintsService = {
     });
 
     return {
-      sprint: updated,
+      sprint: serializeSprintWithAssignees(updated),
       cumulativeProgress: cumulative,
     };
   },
