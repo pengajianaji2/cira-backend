@@ -1,5 +1,18 @@
 import { z } from "zod";
 
+const WHATSAPP_REGEX = /^\+?[1-9]\d{6,14}$/;
+const INSTAGRAM_REGEX = /^[a-zA-Z0-9._]+$/;
+
+const normalizeOptionalContact = (value: unknown) => {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed === "" ? null : trimmed;
+  }
+  return value;
+};
+
 export const loginSchema = z.object({
   email: z.string().email("Format email tidak valid."),
   password: z.string().min(6, "Password minimal 6 karakter.").refine((value) => Buffer.byteLength(value, "utf8") <= 72, "Password terlalu panjang."),
@@ -7,10 +20,30 @@ export const loginSchema = z.object({
 });
 
 export const profileSchema = z.object({
-  name: z.string().min(2, "Nama minimal 2 karakter."),
-  email: z.string().email("Format email tidak valid."),
-  whatsapp: z.string().regex(/^\+?[1-9]\d{6,14}$/, "Nomor WhatsApp harus format internasional valid (misal: +6281234567890).").optional(),
-  instagram: z.string().regex(/^[a-zA-Z0-9._]+$/, "Username Instagram hanya boleh huruf, angka, titik, dan garis bawah tanpa @.").optional(),
+  name: z.string().trim().min(2, "Nama minimal 2 karakter."),
+  email: z.string().trim().email("Format email tidak valid."),
+  whatsapp: z.preprocess(
+    normalizeOptionalContact,
+    z
+      .string()
+      .regex(
+        WHATSAPP_REGEX,
+        "Nomor WhatsApp harus format internasional valid (misal: +6281234567890)."
+      )
+      .nullable()
+      .optional()
+  ),
+  instagram: z.preprocess(
+    normalizeOptionalContact,
+    z
+      .string()
+      .regex(
+        INSTAGRAM_REGEX,
+        "Username Instagram hanya boleh huruf, angka, titik, dan garis bawah (tanpa @ atau URL)."
+      )
+      .nullable()
+      .optional()
+  ),
 });
 
 export const changePasswordSchema = z.object({

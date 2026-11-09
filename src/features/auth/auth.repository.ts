@@ -13,7 +13,10 @@ export const authRepository = {
     });
   },
 
-  async updateProfile(id: string, data: { name: string; email: string; whatsapp?: string; instagram?: string }) {
+  async updateProfile(
+    id: string,
+    data: { name: string; email: string; whatsapp?: string | null; instagram?: string | null }
+  ) {
     return prisma.user.update({
       where: { id },
       data,

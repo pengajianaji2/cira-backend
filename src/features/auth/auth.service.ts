@@ -92,18 +92,22 @@ export const authService = {
     return toUserResponse(user);
   },
 
+  /** Memperbarui profil akun (nama, email, WhatsApp, dan Instagram) serta memvalidasi keunikan email. */
   async updateProfile(userId: string, input: ProfileInput): Promise<UserResponse> {
-    const email = input.email.toLowerCase();
+    const email = input.email.trim().toLowerCase();
     const existing = await authRepository.findByEmail(email);
     if (existing && existing.id !== userId) {
       throw new ConflictError("Email ini telah digunakan oleh akun lain.");
     }
 
     const updated = await authRepository.updateProfile(userId, {
-      name: input.name,
+      name: input.name.trim(),
       email,
       whatsapp: input.whatsapp,
-      instagram: input.instagram?.replace(/^@/, ""),
+      instagram:
+        typeof input.instagram === "string"
+          ? input.instagram.replace(/^@/, "")
+          : input.instagram,
     });
 
     return toUserResponse(updated);
