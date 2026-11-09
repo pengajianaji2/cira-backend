@@ -220,7 +220,7 @@ export const operationsService = {
           status: sprint.project.status,
         },
         status: sprint.status,
-        href: `/projects/${sprint.project.id}?tab=tasks`,
+        href: `/projects/${sprint.project.id}?tab=sprints`,
       });
     }
 

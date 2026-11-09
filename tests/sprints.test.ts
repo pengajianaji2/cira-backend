@@ -5,12 +5,19 @@ process.env.JWT_SECRET = "test_only_secret_value_at_least_32_chars_long";
 process.env.NODE_ENV = "test";
 
 const [
-  { requireAnyRole },
-  { fibonacciStoryPointsSchema },
+  { prisma },
+  { requirePermission },
+  {
+    createSprintSchema,
+    updateSprintSchema,
+    startSprintSchema,
+    fibonacciStoryPointsSchema,
+  },
   { createTaskSchema, updateTaskSchema },
   { sprintsService },
   { sprintsRepository },
 ] = await Promise.all([
+  import("../src/config/db.config.js"),
   import("../src/shared/middlewares/auth.middleware.js"),
   import("../src/features/sprints/sprints.schema.js"),
   import("../src/features/tasks/tasks.schema.js"),
@@ -86,41 +93,30 @@ test("AC-B3-1: createTaskSchema and updateTaskSchema validate storyPoints using 
   );
 });
 
-// ==============================================================
-// AC-B3-1: Validasi Tepat Satu Assignee Sebelum Sprint Dimulai
-// ==============================================================
-test("AC-B3-1: startSprint rejects sprint if any task is missing an assignee", async () => {
-  const originalFindById = sprintsRepository.findById;
-  const originalFindActive = sprintsRepository.findActiveSprintByProjectId;
-
-  // Mock sprint dengan 1 task tanpa assignee
-  sprintsRepository.findById = async () =>
-    ({
-      id: "sprint-1",
-      projectId: "proj-1",
-      name: "Sprint 1",
-      status: "planning",
-      tasks: [
-        { id: "t1", title: "Task 1", assigneeId: "user-1", storyPoints: 3, status: "todo" },
-        { id: "t2", title: "Task 2 Tanpa Assignee", assigneeId: null, storyPoints: 5, status: "todo" },
-      ],
-    } as any);
-
-  sprintsRepository.findActiveSprintByProjectId = async () => null;
-
-  await assert.rejects(
-    async () => sprintsService.startSprint("sprint-1"),
-    /belum memiliki assignee\. Seluruh task dalam sprint wajib memiliki tepat satu assignee/
+test("US-2 / AC-2.1: sprint schemas strictly reject malformed date strings while allowing optional planning dates", () => {
+  assert.equal(
+    createSprintSchema.safeParse({ name: "Sprint Planning", startDate: "bukan-tanggal" }).success,
+    false
   );
-
-  // Restore mocks
-  sprintsRepository.findById = originalFindById;
-  sprintsRepository.findActiveSprintByProjectId = originalFindActive;
+  assert.equal(
+    updateSprintSchema.safeParse({ startDate: "2026-01-01", endDate: "tidak-valid" }).success,
+    false
+  );
+  assert.equal(
+    startSprintSchema.safeParse({ startDate: "invalid", endDate: "2026-11-20" }).success,
+    false
+  );
+  assert.equal(
+    updateSprintSchema.safeParse({ name: "Sprint Rename", startDate: null, endDate: null }).success,
+    true
+  );
 });
 
-test("AC-B3-1: startSprint rejects sprint if any task is missing Fibonacci story points", async () => {
+// ==============================================================
+// US-2 / AC-2.2 & BR-SPRINT-02: Aktivasi Sprint dengan Rentang Tanggal & Single Active Rule
+// ==============================================================
+test("US-2 / AC-2.2: startSprint rejects missing dates, invalid format, or startDate > endDate", async (t) => {
   const originalFindById = sprintsRepository.findById;
-  const originalFindActive = sprintsRepository.findActiveSprintByProjectId;
 
   sprintsRepository.findById = async () =>
     ({
@@ -128,28 +124,45 @@ test("AC-B3-1: startSprint rejects sprint if any task is missing Fibonacci story
       projectId: "proj-1",
       name: "Sprint 1",
       status: "planning",
-      tasks: [
-        { id: "t1", title: "Task 1", assigneeId: "user-1", storyPoints: 3, status: "todo" },
-        { id: "t2", title: "Task Tanpa Points", assigneeId: "user-2", storyPoints: null, status: "todo" },
-      ],
+      tasks: [],
+      project: { id: "proj-1", ownerId: "owner-1" },
     } as any);
 
-  sprintsRepository.findActiveSprintByProjectId = async () => null;
+  t.after(() => {
+    sprintsRepository.findById = originalFindById;
+  });
 
   await assert.rejects(
-    async () => sprintsService.startSprint("sprint-1"),
-    /belum memiliki story points Fibonacci/
+    async () => sprintsService.startSprint("sprint-1", {} as any),
+    /Tanggal mulai dan tanggal selesai wajib diisi/
   );
 
-  sprintsRepository.findById = originalFindById;
-  sprintsRepository.findActiveSprintByProjectId = originalFindActive;
+  await assert.rejects(
+    async () =>
+      sprintsService.startSprint("sprint-1", {
+        startDate: "invalid-date",
+        endDate: "2026-11-20",
+      }),
+    /Format tanggal mulai atau tanggal selesai tidak valid/
+  );
+
+  await assert.rejects(
+    async () =>
+      sprintsService.startSprint("sprint-1", {
+        startDate: "2026-11-20",
+        endDate: "2026-11-10",
+      }),
+    /Tanggal mulai tidak boleh melebihi tanggal selesai/
+  );
 });
 
-test("AC-B3-1: startSprint allows starting sprint when all tasks have assignee and Fibonacci points", async () => {
+test("US-2 / AC-2.2: startSprint activates planning sprint with valid dates without requiring assignee or storyPoints on tasks", async (t) => {
   const originalFindById = sprintsRepository.findById;
   const originalFindActive = sprintsRepository.findActiveSprintByProjectId;
-  const originalUpdate = sprintsRepository.update;
+  const originalStartAtomically = sprintsRepository.startSprintAtomically;
   const originalLog = sprintsRepository.logActivity;
+
+  let capturedDates: { startDate?: Date; endDate?: Date } = {};
 
   sprintsRepository.findById = async () =>
     ({
@@ -159,33 +172,44 @@ test("AC-B3-1: startSprint allows starting sprint when all tasks have assignee a
       status: "planning",
       startDate: null,
       tasks: [
-        { id: "t1", title: "Task 1", assigneeId: "user-1", storyPoints: 3, status: "todo" },
-        { id: "t2", title: "Task 2", assigneeId: "user-2", storyPoints: 5, status: "todo" },
+        { id: "t1", title: "Task Tanpa Assignee", assigneeId: null, storyPoints: null, status: "todo" },
       ],
+      project: { id: "proj-1", ownerId: "owner-1" },
     } as any);
 
   sprintsRepository.findActiveSprintByProjectId = async () => null;
-  sprintsRepository.update = async (_id, data) =>
-    ({
+  sprintsRepository.startSprintAtomically = async (_id, _projectId, startDate, endDate) => {
+    capturedDates = { startDate, endDate };
+    return {
       id: "sprint-1",
-      status: data.status,
+      projectId: "proj-1",
+      status: "active",
       name: "Sprint 1",
-    } as any);
+      startDate,
+      endDate,
+      tasks: [],
+    } as any;
+  };
   sprintsRepository.logActivity = async () => ({} as any);
 
-  const started = await sprintsService.startSprint("sprint-1");
-  assert.equal(started.status, "active");
+  t.after(() => {
+    sprintsRepository.findById = originalFindById;
+    sprintsRepository.findActiveSprintByProjectId = originalFindActive;
+    sprintsRepository.startSprintAtomically = originalStartAtomically;
+    sprintsRepository.logActivity = originalLog;
+  });
 
-  sprintsRepository.findById = originalFindById;
-  sprintsRepository.findActiveSprintByProjectId = originalFindActive;
-  sprintsRepository.update = originalUpdate;
-  sprintsRepository.logActivity = originalLog;
+  const started = await sprintsService.startSprint("sprint-1", {
+    startDate: "2026-11-10",
+    endDate: "2026-11-24",
+  });
+
+  assert.equal(started.status, "active");
+  assert.equal(capturedDates.startDate?.toISOString().slice(0, 10), "2026-11-10");
+  assert.equal(capturedDates.endDate?.toISOString().slice(0, 10), "2026-11-24");
 });
 
-// ==============================================================
-// Sprint Rule: Single Active Sprint Per Project (Tanpa Overlap)
-// ==============================================================
-test("Sprint Rule: startSprint strictly rejects starting if another sprint is already active", async () => {
+test("Sprint Rule: startSprint strictly rejects starting if another sprint is already active", async (t) => {
   const originalFindById = sprintsRepository.findById;
   const originalFindActive = sprintsRepository.findActiveSprintByProjectId;
 
@@ -196,9 +220,9 @@ test("Sprint Rule: startSprint strictly rejects starting if another sprint is al
       name: "Sprint 2",
       status: "planning",
       tasks: [{ id: "t1", title: "Task 1", assigneeId: "user-1", storyPoints: 5, status: "todo" }],
+      project: { id: "proj-1", ownerId: "owner-1" },
     } as any);
 
-  // Ada sprint 1 yang sudah aktif
   sprintsRepository.findActiveSprintByProjectId = async () =>
     ({
       id: "sprint-1",
@@ -207,92 +231,175 @@ test("Sprint Rule: startSprint strictly rejects starting if another sprint is al
       status: "active",
     } as any);
 
-  await assert.rejects(
-    async () => sprintsService.startSprint("sprint-2"),
-    /Hanya boleh tepat satu sprint aktif dalam proyek/
-  );
-
-  sprintsRepository.findById = originalFindById;
-  sprintsRepository.findActiveSprintByProjectId = originalFindActive;
-});
-
-// ==============================================================
-// AC-B3-2: Penolakan Complete Sprint Jika Ada Task Belum 'done'
-// ==============================================================
-test("AC-B3-2: completeSprint rejects completion if any task in sprint is not 'done'", async () => {
-  const originalFindById = sprintsRepository.findById;
-
-  // Sprint aktif dengan 1 task todo dan 1 task done
-  sprintsRepository.findById = async () =>
-    ({
-      id: "sprint-1",
-      projectId: "proj-1",
-      name: "Sprint 1",
-      status: "active",
-      tasks: [
-        { id: "t1", title: "Task Selesai", status: "done", storyPoints: 5 },
-        { id: "t2", title: "Task Belum Selesai", status: "in_progress", storyPoints: 3 },
-      ],
-    } as any);
-
-  await assert.rejects(
-    async () => sprintsService.completeSprint("sprint-1"),
-    /masih terdapat 1 task yang belum berstatus 'done'/
-  );
-
-  sprintsRepository.findById = originalFindById;
-});
-
-test("AC-B3-2: completeSprint succeeds when all tasks are 'done' and recalculates progress", async () => {
-  const originalFindById = sprintsRepository.findById;
-  const originalUpdate = sprintsRepository.update;
-  const originalCalculate = sprintsRepository.calculateCumulativeProgress;
-  const originalUpdateProgress = sprintsRepository.updateProjectProgress;
-  const originalLog = sprintsRepository.logActivity;
-
-  sprintsRepository.findById = async () =>
-    ({
-      id: "sprint-1",
-      projectId: "proj-1",
-      name: "Sprint 1",
-      status: "active",
-      tasks: [
-        { id: "t1", title: "Task 1", status: "done", storyPoints: 5 },
-        { id: "t2", title: "Task 2", status: "done", storyPoints: 3 },
-      ],
-    } as any);
-
-  sprintsRepository.update = async (_id, data) =>
-    ({
-      id: "sprint-1",
-      status: data.status,
-      name: "Sprint 1",
-      completedAt: data.completedAt,
-    } as any);
-
-  sprintsRepository.calculateCumulativeProgress = async () => ({
-    totalScopePoints: 8,
-    completedPoints: 8,
-    progress: 100,
+  t.after(() => {
+    sprintsRepository.findById = originalFindById;
+    sprintsRepository.findActiveSprintByProjectId = originalFindActive;
   });
 
-  let recordedProgress = 0;
-  sprintsRepository.updateProjectProgress = async (_pid, prog) => {
-    recordedProgress = prog;
-    return {} as any;
+  await assert.rejects(
+    async () =>
+      sprintsService.startSprint("sprint-2", {
+        startDate: "2026-11-10",
+        endDate: "2026-11-24",
+      }),
+    /Hanya boleh tepat satu sprint aktif dalam proyek/
+  );
+});
+
+// ==============================================================
+// US-2 / AC-2.3 & BR-SPRINT-04: Penutupan Sprint Atomik & Realokasi Task TODO
+// ==============================================================
+test("US-2 / AC-2.3: completeSprint rejects non-active sprint and delegates atomic relocation when active", async (t) => {
+  const originalFindById = sprintsRepository.findById;
+  const originalCompleteAtomically = sprintsRepository.completeSprintAtomically;
+
+  let sprintStatus = "planning";
+  let capturedMoves: unknown[] = [];
+
+  sprintsRepository.findById = async () =>
+    ({
+      id: "sprint-1",
+      projectId: "proj-1",
+      name: "Sprint 1",
+      status: sprintStatus,
+      tasks: [],
+      project: { id: "proj-1", ownerId: "owner-1" },
+    } as any);
+
+  sprintsRepository.completeSprintAtomically = async (_id, _projectId, taskMoves) => {
+    capturedMoves = taskMoves;
+    return {
+      sprint: { id: "sprint-1", status: "completed", name: "Sprint 1" },
+      progress: 50,
+      completedSprintCount: 1,
+      totalSprintCount: 2,
+      readyTermIds: ["term-1"],
+    } as any;
   };
-  sprintsRepository.logActivity = async () => ({} as any);
 
-  const result = await sprintsService.completeSprint("sprint-1");
+  t.after(() => {
+    sprintsRepository.findById = originalFindById;
+    sprintsRepository.completeSprintAtomically = originalCompleteAtomically;
+  });
+
+  await assert.rejects(
+    async () => sprintsService.completeSprint("sprint-1", { taskMoves: [] }),
+    /Hanya sprint berstatus aktif yang dapat diselesaikan/
+  );
+
+  sprintStatus = "active";
+  const result = await sprintsService.completeSprint("sprint-1", {
+    taskMoves: [{ taskId: "t-todo-1", targetSprintId: null }],
+  });
+
   assert.equal(result.sprint.status, "completed");
-  assert.equal(result.cumulativeProgress.progress, 100);
-  assert.equal(recordedProgress, 100);
+  assert.equal(result.progress, 50);
+  assert.deepEqual(result.readyTermIds, ["term-1"]);
+  assert.deepEqual(capturedMoves, [{ taskId: "t-todo-1", targetSprintId: null }]);
+});
 
-  sprintsRepository.findById = originalFindById;
-  sprintsRepository.update = originalUpdate;
-  sprintsRepository.calculateCumulativeProgress = originalCalculate;
-  sprintsRepository.updateProjectProgress = originalUpdateProgress;
-  sprintsRepository.logActivity = originalLog;
+test("US-2 / AC-2.3 & BR-SPRINT-04: completeSprintAtomically enforces TODO task allocation and updates progress atomically", async (t) => {
+  const originalTransaction = prisma.$transaction;
+
+  const taskUpdates: Array<{ where: { id: string }; data: { sprintId: string | null } }> = [];
+  let updatedProjectProgress = -1;
+  let loggedAudit: any = null;
+
+  const mockTx = {
+    $queryRaw: async () => [],
+    sprint: {
+      findUnique: async ({ where }: { where: { id: string } }) => {
+        if (where.id === "sprint-1") {
+          return {
+            id: "sprint-1",
+            projectId: "proj-1",
+            name: "Sprint 1",
+            status: "active",
+            tasks: [
+              { id: "t-done", title: "Done Task", status: "done" },
+              { id: "t-todo", title: "Todo Carryover", status: "todo" },
+            ],
+          };
+        }
+        if (where.id === "sprint-completed") {
+          return { id: "sprint-completed", projectId: "proj-1", status: "completed", name: "Sprint 0" };
+        }
+        if (where.id === "sprint-2") {
+          return { id: "sprint-2", projectId: "proj-1", status: "planning", name: "Sprint 2" };
+        }
+        return null;
+      },
+      update: async ({ where, data }: any) => ({
+        id: where.id,
+        projectId: "proj-1",
+        name: "Sprint 1",
+        status: data.status,
+        completedAt: data.completedAt,
+        tasks: [],
+      }),
+      count: async ({ where }: any) => (where.status === "completed" ? 1 : 2),
+    },
+    task: {
+      update: async (args: any) => {
+        taskUpdates.push(args);
+        return args;
+      },
+    },
+    project: {
+      update: async ({ data }: any) => {
+        updatedProjectProgress = data.progress;
+        return { id: "proj-1", progress: data.progress };
+      },
+    },
+    paymentTerm: {
+      findMany: async () => [],
+    },
+    activityLog: {
+      create: async ({ data }: any) => {
+        loggedAudit = data;
+        return data;
+      },
+    },
+  };
+
+  (prisma as any).$transaction = async (callback: (tx: any) => Promise<any>) => callback(mockTx);
+
+  t.after(() => {
+    (prisma as any).$transaction = originalTransaction;
+  });
+
+  // 1. Tolak jika ada task 'todo' yang belum dialokasikan di taskMoves
+  await assert.rejects(
+    () => sprintsRepository.completeSprintAtomically("sprint-1", "proj-1", [], new Date("2026-11-15T10:00:00Z")),
+    /belum ditentukan tujuannya/
+  );
+
+  // 2. Tolak jika sprint tujuan pemindahan sudah completed
+  await assert.rejects(
+    () =>
+      sprintsRepository.completeSprintAtomically(
+        "sprint-1",
+        "proj-1",
+        [{ taskId: "t-todo", targetSprintId: "sprint-completed" }],
+        new Date("2026-11-15T10:00:00Z")
+      ),
+    /sudah berstatus completed/
+  );
+
+  // 3. Berhasil memindahkan task TODO ke sprint planning lain, menandai completed, & memperbarui progress
+  const result = await sprintsRepository.completeSprintAtomically(
+    "sprint-1",
+    "proj-1",
+    [{ taskId: "t-todo", targetSprintId: "sprint-2" }],
+    new Date("2026-11-15T10:00:00Z"),
+    { id: "u-owner", name: "Owner", role: "owner" }
+  );
+
+  assert.equal(result.sprint.status, "completed");
+  assert.equal(result.progress, 50);
+  assert.equal(updatedProjectProgress, 50);
+  assert.deepEqual(taskUpdates, [{ where: { id: "t-todo" }, data: { sprintId: "sprint-2" } }]);
+  assert.equal(loggedAudit.action, "SPRINT_COMPLETE");
 });
 
 // ==============================================================
@@ -333,42 +440,35 @@ test("AC-B3-3: Cumulative progress calculates mathematical percentage correctly 
 });
 
 // ==============================================================
-// RBAC Protection: Task Deletion (Hanya Owner & Operasional)
+// RBAC Protection: Task Deletion via requirePermission("tasks.delete")
 // ==============================================================
-test("RBAC: deleteTask endpoint allows Owner and Operasional, strictly forbids Developer (403)", () => {
-  const allowedRoles = requireAnyRole("owner", "operasional");
+test("RBAC: deleteTask permission guard allows Owner by default and forbids Developer (403)", async (t) => {
+  const originalRoleFindMany = prisma.rolePolicy.findMany;
+  (prisma.rolePolicy as any).findMany = async () => [];
 
-  let ownerPassed = false;
-  allowedRoles(
-    { user: { id: "u-owner", roles: ["owner"] } } as any,
-    {} as any,
-    (err) => {
-      assert.equal(err, undefined);
-      ownerPassed = true;
-    }
-  );
-  assert.equal(ownerPassed, true);
+  t.after(() => {
+    (prisma.rolePolicy as any).findMany = originalRoleFindMany;
+  });
 
-  let opsPassed = false;
-  allowedRoles(
-    { user: { id: "u-ops", roles: ["operasional"] } } as any,
-    {} as any,
-    (err) => {
-      assert.equal(err, undefined);
-      opsPassed = true;
-    }
-  );
-  assert.equal(opsPassed, true);
+  const guard = requirePermission("tasks.delete");
 
-  // Developer harus ditolak dengan error 403 Forbidden
-  let devError: any;
-  allowedRoles(
-    { user: { id: "u-dev", roles: ["developer"] } } as any,
-    {} as any,
-    (err) => {
-      devError = err;
-    }
-  );
-  assert.ok(devError, "Developer harus menghasilkan error");
-  assert.equal(devError.statusCode, 403);
+  async function runGuard(roles: string[]) {
+    return new Promise<any>((resolve) => {
+      guard(
+        { user: { id: "u-test", roles } } as any,
+        {} as any,
+        (err?: any) => resolve(err)
+      );
+    });
+  }
+
+  assert.equal(await runGuard(["owner"]), undefined);
+
+  const devErr = await runGuard(["developer"]);
+  assert.ok(devErr, "Developer harus menghasilkan error");
+  assert.equal(devErr.statusCode, 403);
+
+  const opsDefaultErr = await runGuard(["operasional"]);
+  assert.ok(opsDefaultErr, "Operasional tanpa policy override ditolak default");
+  assert.equal(opsDefaultErr.statusCode, 403);
 });

@@ -298,13 +298,6 @@ export const sprintsRepository = {
     });
   },
 
-  async removeTaskFromSprint(taskId: string) {
-    return prisma.task.update({
-      where: { id: taskId },
-      data: { sprintId: null },
-    });
-  },
-
   /**
    * BR-PROJECT-01 — Rumus progres proyek:
    * progress = completedSprintCount / totalSprintCount * 100%
