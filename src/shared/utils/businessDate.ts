@@ -1,6 +1,7 @@
 export const BUSINESS_TIMEZONE = "Asia/Jakarta";
 
 const DATE_ONLY_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+const MS_PER_DAY = 86_400_000;
 
 const wibDateFormatter = new Intl.DateTimeFormat("en-US", {
   timeZone: BUSINESS_TIMEZONE,
@@ -40,6 +41,58 @@ export function getBusinessDateWib(date: Date = new Date()): string {
   const month = parts.find((part) => part.type === "month")?.value ?? "01";
   const day = parts.find((part) => part.type === "day")?.value ?? "01";
   return `${year}-${month}-${day}`;
+}
+
+/**
+ * Mengonversi YYYY-MM-DD ke batas awal hari 00:00:00.000+07:00 dalam UTC Date.
+ */
+export function wibDateStartToUtc(dateOnly: string): Date {
+  return new Date(`${dateOnly}T00:00:00.000+07:00`);
+}
+
+/**
+ * Mengonversi YYYY-MM-DD ke batas akhir hari 23:59:59.999+07:00 dalam UTC Date.
+ */
+export function wibDateEndToUtc(dateOnly: string): Date {
+  return new Date(`${dateOnly}T23:59:59.999+07:00`);
+}
+
+/**
+ * Menghitung selisih hari inklusif antara dua tanggal YYYY-MM-DD kalender murni.
+ * Misal from == to menghasilkan 1 hari; rentang 90 hari kalender menghasilkan <= 90.
+ */
+export function diffDaysInclusive(fromDateOnly: string, toDateOnly: string): number {
+  const [fy, fm, fd] = fromDateOnly.split("-").map(Number);
+  const [ty, tm, td] = toDateOnly.split("-").map(Number);
+  const fromUtc = Date.UTC(fy, fm - 1, fd);
+  const toUtc = Date.UTC(ty, tm - 1, td);
+  return Math.floor((toUtc - fromUtc) / MS_PER_DAY) + 1;
+}
+
+/**
+ * Mengembalikan rentang tanggal bulan berjalan [YYYY-MM-01, YYYY-MM-last] menurut WIB.
+ */
+export function getCurrentMonthRangeWib(now: Date = new Date()): { from: string; to: string } {
+  const today = getBusinessDateWib(now);
+  const [yearStr, monthStr] = today.split("-");
+  const year = Number(yearStr);
+  const month = Number(monthStr);
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return {
+    from: `${yearStr}-${monthStr}-01`,
+    to: `${yearStr}-${monthStr}-${String(lastDay).padStart(2, "0")}`,
+  };
+}
+
+/**
+ * Menghasilkan nilai epoch milidetik konsisten di WIB untuk pengurutan campuran
+ * date-only all-day (00:00 WIB) dan ISO timestamp.
+ */
+export function getWibSortTimestamp(value: string | Date): number {
+  if (typeof value === "string" && isValidDateOnly(value)) {
+    return wibDateStartToUtc(value).getTime();
+  }
+  return new Date(value).getTime();
 }
 
 /**

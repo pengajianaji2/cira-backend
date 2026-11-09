@@ -1,4 +1,4 @@
-import { BadRequestError, NotFoundError } from "../../shared/errors/AppError.js";
+import { BadRequestError, ForbiddenError, NotFoundError } from "../../shared/errors/AppError.js";
 import { AuthUserPayload } from "../../shared/middlewares/auth.middleware.js";
 import { sprintsRepository } from "./sprints.repository.js";
 import {
@@ -17,12 +17,43 @@ function isFibonacci(points: number | null | undefined): boolean {
   return (FIBONACCI_POINTS as readonly number[]).includes(points);
 }
 
+/**
+ * AC-4.4: Developer hanya diizinkan mengakses data sprint proyek yang terdaftar di rostrenya.
+ * Owner & Operasional memiliki visibilitas operasional penuh lintas proyek.
+ */
+async function assertSprintProjectAccess(
+  project: { id: string; ownerId?: string | null },
+  user?: AuthUserPayload
+): Promise<void> {
+  if (!user) return;
+  const normalizedRoles = (user.roles ?? []).map((r) => r.toLowerCase());
+  const hasGlobalScope =
+    normalizedRoles.includes("owner") ||
+    normalizedRoles.includes("operasional") ||
+    normalizedRoles.includes("ops");
+
+  if (hasGlobalScope) return;
+  if (project.ownerId && project.ownerId === user.id) return;
+
+  const isRosterMember = await sprintsRepository.isUserInProjectRoster(project.id, user.id);
+  if (!isRosterMember) {
+    throw new ForbiddenError(
+      "Akses ditolak. Anda tidak terdaftar pada roster proyek ini untuk mengakses data sprint."
+    );
+  }
+}
+
 export const sprintsService = {
-  async getSprintsByProjectId(projectId: string): Promise<SprintSummary[]> {
+  async getSprintsByProjectId(
+    projectId: string,
+    user?: AuthUserPayload
+  ): Promise<SprintSummary[]> {
     const project = await sprintsRepository.findProjectById(projectId);
     if (!project) {
       throw new NotFoundError(`Proyek dengan ID '${projectId}' tidak ditemukan.`);
     }
+
+    await assertSprintProjectAccess(project, user);
 
     const sprints = await sprintsRepository.findSprintsByProjectId(projectId);
 
@@ -57,11 +88,12 @@ export const sprintsService = {
     });
   },
 
-  async getSprintById(id: string) {
+  async getSprintById(id: string, user?: AuthUserPayload) {
     const sprint = await sprintsRepository.findById(id);
     if (!sprint) {
       throw new NotFoundError(`Sprint dengan ID '${id}' tidak ditemukan.`);
     }
+    await assertSprintProjectAccess(sprint.project, user);
     return sprint;
   },
 
@@ -74,6 +106,8 @@ export const sprintsService = {
     if (!project) {
       throw new NotFoundError(`Proyek dengan ID '${projectId}' tidak ditemukan.`);
     }
+
+    await assertSprintProjectAccess(project, user);
 
     if (dto.startDate && dto.endDate) {
       if (new Date(dto.startDate) > new Date(dto.endDate)) {
@@ -116,6 +150,8 @@ export const sprintsService = {
     if (!sprint) {
       throw new NotFoundError(`Sprint dengan ID '${id}' tidak ditemukan.`);
     }
+
+    await assertSprintProjectAccess(sprint.project, user);
 
     if (sprint.status === "active") {
       throw new BadRequestError("Sprint ini sudah dalam status aktif.");
@@ -192,6 +228,8 @@ export const sprintsService = {
       throw new NotFoundError(`Sprint dengan ID '${id}' tidak ditemukan.`);
     }
 
+    await assertSprintProjectAccess(sprint.project, user);
+
     if (sprint.status !== "active") {
       throw new BadRequestError(`Hanya sprint berstatus aktif yang dapat diselesaikan. Status saat ini: '${sprint.status}'.`);
     }
@@ -216,6 +254,8 @@ export const sprintsService = {
     if (!sprint) {
       throw new NotFoundError(`Sprint dengan ID '${id}' tidak ditemukan.`);
     }
+
+    await assertSprintProjectAccess(sprint.project, user);
 
     if (sprint.status === "completed") {
       throw new BadRequestError("Sprint yang telah selesai tidak dapat diubah melalui pembaruan umum.");
@@ -251,6 +291,8 @@ export const sprintsService = {
     if (!sprint) {
       throw new NotFoundError(`Sprint dengan ID '${id}' tidak ditemukan.`);
     }
+
+    await assertSprintProjectAccess(sprint.project, user);
 
     if (sprint.status !== "completed") {
       throw new BadRequestError("Hanya sprint yang telah selesai yang dapat dibuka kembali.");
@@ -292,6 +334,8 @@ export const sprintsService = {
       throw new NotFoundError(`Sprint dengan ID '${id}' tidak ditemukan.`);
     }
 
+    await assertSprintProjectAccess(sprint.project, user);
+
     await sprintsRepository.delete(id);
 
     // Rekalkulasi progres proyek (denominator berkurang)
@@ -318,6 +362,8 @@ export const sprintsService = {
       throw new NotFoundError(`Sprint dengan ID '${sprintId}' tidak ditemukan.`);
     }
 
+    await assertSprintProjectAccess(sprint.project, user);
+
     if (sprint.status === "completed") {
       throw new BadRequestError("Sprint yang sudah selesai tidak dapat menerima task baru.");
     }
@@ -335,16 +381,21 @@ export const sprintsService = {
     return { success: true, count: dto.taskIds.length };
   },
 
-  async removeTask(taskId: string, user?: AuthUserPayload) {
+  async removeTask(taskId: string, _user?: AuthUserPayload) {
     const updated = await sprintsRepository.removeTaskFromSprint(taskId);
     return updated;
   },
 
-  async getProjectCumulativeProgress(projectId: string): Promise<ProjectCumulativeProgress> {
+  async getProjectCumulativeProgress(
+    projectId: string,
+    user?: AuthUserPayload
+  ): Promise<ProjectCumulativeProgress> {
     const project = await sprintsRepository.findProjectById(projectId);
     if (!project) {
       throw new NotFoundError(`Proyek dengan ID '${projectId}' tidak ditemukan.`);
     }
+
+    await assertSprintProjectAccess(project, user);
 
     const cumulative = await sprintsRepository.calculateCumulativeProgress(projectId);
     return {

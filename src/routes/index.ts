@@ -7,6 +7,7 @@ import sprintsRouter from "../features/sprints/sprints.routes.js";
 import paymentsRouter, { paymentTermsRouter } from "../features/finance/finance.routes.js";
 import assetsRouter from "../features/assets/assets.routes.js";
 import policiesRouter from "../features/auth/policies.routes.js";
+import operationsRouter from "../features/operations/operations.routes.js";
 import { prisma } from "../config/db.config.js";
 
 const apiRouter = Router();
@@ -20,6 +21,7 @@ apiRouter.use("/sprints", sprintsRouter);
 apiRouter.use("/payments", paymentsRouter);
 apiRouter.use("/payment-terms", paymentTermsRouter);
 apiRouter.use("/assets", assetsRouter);
+apiRouter.use("/operations", operationsRouter);
 
 apiRouter.get("/health", (_req, res) => {
   res.json({
