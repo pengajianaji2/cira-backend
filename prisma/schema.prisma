@@ -32,6 +32,8 @@ model User {
   statusVotes              ProjectStatusVote[]
   prdVersions              PrdVersion[]
   passwordResetTokens      PasswordResetToken[]
+  createdOperationalEvents OperationalEvent[]     @relation("CreatedOperationalEvents")
+  updatedOperationalEvents OperationalEvent[]     @relation("UpdatedOperationalEvents")
 
   @@map("users")
 }
@@ -107,18 +109,19 @@ model Project {
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
-  ownerId         String?
-  owner           User?                   @relation("UserProjects", fields: [ownerId], references: [id])
-  tasks           Task[]
-  sprints         Sprint[]
-  payments        Payment[]
-  paymentTerms    PaymentTerm[]
-  assets          DesignAsset[]
-  activities      ActivityLog[]
-  roster          ProjectRoster[]
-  statusRequests  ProjectStatusRequest[]
-  repositoryLinks ProjectRepositoryLink[]
-  prdVersions     PrdVersion[]
+  ownerId           String?
+  owner             User?                   @relation("UserProjects", fields: [ownerId], references: [id])
+  tasks             Task[]
+  sprints           Sprint[]
+  payments          Payment[]
+  paymentTerms      PaymentTerm[]
+  assets            DesignAsset[]
+  activities        ActivityLog[]
+  roster            ProjectRoster[]
+  statusRequests    ProjectStatusRequest[]
+  repositoryLinks   ProjectRepositoryLink[]
+  prdVersions       PrdVersion[]
+  operationalEvents OperationalEvent[]
 
   @@map("projects")
   @@index([createdAt])
@@ -360,4 +363,37 @@ model ActivityLog {
   @@map("activity_logs")
   @@index([projectId, createdAt])
   @@index([projectId, category, createdAt])
+}
+
+model OperationalEvent {
+  id               String    @id @default(uuid())
+  title            String
+  eventType        String    // client_demo, deployment, maintenance, meeting
+  description      String?   @db.Text
+  startAt          DateTime
+  endAt            DateTime?
+  allDay           Boolean   @default(false)
+  allDayStartDate  String?   // YYYY-MM-DD (Asia/Jakarta date-only)
+  allDayEndDate    String?   // YYYY-MM-DD (Asia/Jakarta date-only)
+  projectId        String?
+  project          Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  status           String    @default("scheduled") // scheduled, cancelled
+  createdById      String?
+  createdBy        User?     @relation("CreatedOperationalEvents", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedById      String?
+  updatedBy        User?     @relation("UpdatedOperationalEvents", fields: [updatedById], references: [id], onDelete: SetNull)
+  cancelledAt      DateTime?
+  cancelledById    String?
+  cancelReason     String?   @db.Text
+  lastRemindedAt   DateTime?
+  lastRemindedById String?
+  reminderNote     String?   @db.Text
+  reminderCount    Int       @default(0)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@map("operational_events")
+  @@index([status, startAt])
+  @@index([status, allDay, allDayStartDate])
+  @@index([projectId, status])
 }

@@ -5,13 +5,13 @@ import { sprintsService } from "./sprints.service.js";
 export const sprintsController = {
   async getProjectSprints(req: Request, res: Response): Promise<Response> {
     const projectId = req.params.projectId as string;
-    const sprints = await sprintsService.getSprintsByProjectId(projectId);
+    const sprints = await sprintsService.getSprintsByProjectId(projectId, req.user);
     return sendSuccess(res, "Daftar sprint proyek berhasil diambil", sprints);
   },
 
   async getSprintById(req: Request, res: Response): Promise<Response> {
     const id = req.params.id as string;
-    const sprint = await sprintsService.getSprintById(id);
+    const sprint = await sprintsService.getSprintById(id, req.user);
     return sendSuccess(res, "Data sprint berhasil diambil", sprint);
   },
 
@@ -59,7 +59,7 @@ export const sprintsController = {
 
   async getProjectProgress(req: Request, res: Response): Promise<Response> {
     const projectId = req.params.projectId as string;
-    const progress = await sprintsService.getProjectCumulativeProgress(projectId);
+    const progress = await sprintsService.getProjectCumulativeProgress(projectId, req.user);
     return sendSuccess(res, "Progres kumulatif proyek berhasil diambil", progress);
   },
 };

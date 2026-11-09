@@ -10,6 +10,16 @@ export const sprintsRepository = {
     });
   },
 
+  async isUserInProjectRoster(projectId: string, userId: string): Promise<boolean> {
+    const member = await prisma.projectRoster.findUnique({
+      where: {
+        projectId_userId: { projectId, userId },
+      },
+      select: { id: true },
+    });
+    return Boolean(member);
+  },
+
   async findSprintsByProjectId(projectId: string) {
     return prisma.sprint.findMany({
       where: { projectId },
