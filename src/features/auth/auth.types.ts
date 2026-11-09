@@ -21,8 +21,8 @@ export interface LoginInput {
 export interface ProfileInput {
   name: string;
   email: string;
-  whatsapp?: string;
-  instagram?: string;
+  whatsapp?: string | null;
+  instagram?: string | null;
 }
 
 export interface ChangePasswordInput {
