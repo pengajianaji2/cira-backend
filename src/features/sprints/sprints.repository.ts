@@ -1,6 +1,7 @@
 import { prisma } from "../../config/db.config.js";
 import { CreateSprintDto, TaskMoveTarget, UpdateSprintDto } from "./sprints.types.js";
 import { BadRequestError, NotFoundError } from "../../shared/errors/AppError.js";
+import { evaluateProjectTermReadinessInTx } from "../finance/finance.repository.js";
 
 export const sprintsRepository = {
   async findProjectById(projectId: string) {
@@ -129,11 +130,12 @@ export const sprintsRepository = {
   },
 
   /**
-   * BR-SPRINT-04 & BR-SPRINT-05 — Penutupan Sprint Atomik
+   * BR-SPRINT-04, BR-SPRINT-05 & AC-3.2 — Penutupan Sprint Atomik
    * - Memindahkan seluruh task 'todo' ke Backlog atau sprint non-completed lain
    * - Mengubah status sprint menjadi completed & mengisi completedAt
    * - Menghitung ulang dan menyimpan progress proyek (BR-PROJECT-01)
-   * - Mencatat activity log
+   * - Mengevaluasi pemicu termin berbasis jumlah sprint selesai secara idempotent (AC-3.2)
+   * - Mencatat activity log dalam transaksi tunggal
    */
   async completeSprintAtomically(
     id: string,
@@ -169,7 +171,6 @@ export const sprintsRepository = {
           );
         }
 
-        // Jika dipindahkan ke sprint lain
         if (move.targetSprintId) {
           const targetSprint = await tx.sprint.findUnique({
             where: { id: move.targetSprintId },
@@ -183,13 +184,11 @@ export const sprintsRepository = {
             throw new BadRequestError(`Sprint target "${targetSprint.name}" sudah berstatus completed dan tidak dapat menerima task.`);
           }
 
-          // Pindahkan ke sprint target
           await tx.task.update({
             where: { id: todoTask.id },
             data: { sprintId: move.targetSprintId },
           });
         } else {
-          // Pindahkan ke Backlog (sprintId = null)
           await tx.task.update({
             where: { id: todoTask.id },
             data: { sprintId: null },
@@ -227,7 +226,10 @@ export const sprintsRepository = {
         data: { progress },
       });
 
-      // 5. Catat riwayat audit
+      // 5. Evaluasi pemicu termin (sprint & tanggal jatuh tempo) secara atomik dan idempotent
+      const readyTermIds = await evaluateProjectTermReadinessInTx(tx, projectId, completedAt, actor);
+
+      // 6. Catat riwayat audit
       await tx.activityLog.create({
         data: {
           projectId,
@@ -245,6 +247,7 @@ export const sprintsRepository = {
             progress,
             completedSprintCount,
             totalSprintCount,
+            readyTermIds,
           },
         },
       });
@@ -254,6 +257,7 @@ export const sprintsRepository = {
         progress,
         completedSprintCount,
         totalSprintCount,
+        readyTermIds,
       };
     });
   },
@@ -294,8 +298,6 @@ export const sprintsRepository = {
   /**
    * BR-PROJECT-01 — Rumus progres proyek:
    * progress = completedSprintCount / totalSprintCount * 100%
-   * Denominator mencakup planning, active, dan completed.
-   * Total 0 menghasilkan 0%. Dibulatkan 1 desimal.
    */
   async calculateCumulativeProgress(projectId: string): Promise<{
     totalScopePoints: number;

@@ -40,7 +40,7 @@ export const requireAuth = async (
 
   try {
     const decoded = jwt.verify(token, env.JWT_SECRET, { algorithms: ["HS256"] }) as AuthUserPayload;
-    
+
     // Verifikasi keberadaan dan status aktif akun di database (BR-AUTH-12)
     const user = await prisma.user.findUnique({
       where: { id: decoded.id },
@@ -76,6 +76,22 @@ export const requirePermission = (permission: string) => async (
     return next(new ForbiddenError("Akses ditolak. Policy role tidak mengizinkan tindakan ini."));
   }
   next();
+};
+
+export const requireAnyPermission = (...permissions: string[]) => async (
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  if (!req.user) {
+    return next(new ForbiddenError("Akses ditolak. Policy role tidak mengizinkan tindakan ini."));
+  }
+  for (const permission of permissions) {
+    if (await policiesService.hasAny(req.user.roles, permission)) {
+      return next();
+    }
+  }
+  return next(new ForbiddenError("Akses ditolak. Policy role tidak mengizinkan tindakan ini."));
 };
 
 export const requirePermissionWhenPresent = (permission: string, field: string) => async (

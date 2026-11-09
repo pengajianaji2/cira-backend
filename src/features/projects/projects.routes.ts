@@ -49,10 +49,10 @@ router.use("/:projectId/sprints", projectSprintsRouter);
 // 2. Termin Pembayaran: /api/v1/projects/:projectId/payments
 router.use("/:projectId/payments", projectPaymentsRouter);
 
-// 2b. Kontrak & Termin Pembayaran 100% (US-4: AC-13)
+// 2b. Kontrak & Termin Pembayaran 100% (US-3: AC-3.1)
 router.post(
   "/:projectId/contracts",
-  requirePermission("finance.write"),
+  requirePermission("finance.payment_terms.manage"),
   requirePermission("projects.contract.update"),
   validateRequest({ params: projectParamSchema, body: createContractSchema }),
   asyncHandler(financeController.createProjectContract)

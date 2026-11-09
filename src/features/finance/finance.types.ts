@@ -7,8 +7,18 @@ export interface TermInputDto {
   title: string;
   percentage: number;
   triggerType: TermTriggerType;
+  triggerDate?: string | null;
+  requiredCompletedSprints?: number | null;
   triggerSprintId?: string | null;
   dueDate?: string | null;
+  notes?: string | null;
+}
+
+export interface UpdateTermDto {
+  title?: string;
+  triggerType?: TermTriggerType;
+  triggerDate?: string | null;
+  requiredCompletedSprints?: number | null;
   notes?: string | null;
 }
 
@@ -18,11 +28,14 @@ export interface CreateContractDto {
 }
 
 export interface UploadBastDto {
-  bastUrl: string;
+  bastUrl?: string;
   bastFileName?: string;
+  notes?: string;
 }
 
 export interface IssueInvoiceDto {
+  invoiceNumber?: string;
+  invoiceDueDate: string;
   notes?: string;
   invoicePdfUrl?: string;
 }
@@ -35,16 +48,22 @@ export interface PaymentTermDetail {
   percentage: number;
   amount: number;
   triggerType: TermTriggerType;
+  triggerDate?: string | null;
+  requiredCompletedSprints?: number | null;
   triggerSprintId?: string | null;
   dueDate?: string | null;
   status: TermStatus;
+  readyAt?: Date | null;
   bastUrl?: string | null;
   bastFileName?: string | null;
   bastUploadedAt?: Date | null;
   invoiceNumber?: string | null;
   invoiceIssuedAt?: Date | null;
+  invoiceDueDate?: string | null;
+  paidAt?: Date | null;
   invoicePdfUrl?: string | null;
   isLocked: boolean;
+  overdue: boolean;
   notes?: string | null;
   createdAt: Date;
   updatedAt: Date;

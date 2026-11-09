@@ -82,13 +82,13 @@ model AuthRateLimit {
 }
 
 model RolePolicyHistory {
-  id                String   @id @default(uuid())
-  role              String
-  addedPermissions  String[] @default([])
+  id                 String   @id @default(uuid())
+  role               String
+  addedPermissions   String[] @default([])
   removedPermissions String[] @default([])
-  actorId           String
-  actorEmail        String
-  createdAt         DateTime @default(now())
+  actorId            String
+  actorEmail         String
+  createdAt          DateTime @default(now())
 
   @@index([role, createdAt])
   @@map("role_policy_history")
@@ -287,33 +287,41 @@ model Payment {
 }
 
 model PaymentTerm {
-  id              String    @id @default(uuid())
-  projectId       String
-  termNumber      Int
-  title           String
-  percentage      Float
-  amount          Decimal   @db.Decimal(20, 2)
-  triggerType     String    @default("manual") // date, sprint, manual
-  triggerSprintId String?
-  dueDate         String?
-  status          String    @default("planned") // planned, ready, invoiced, paid
-  bastUrl         String?   @db.Text
-  bastFileName    String?
-  bastUploadedAt  DateTime?
-  invoiceNumber   String?   @unique
-  invoiceIssuedAt DateTime?
-  invoicePdfUrl   String?   @db.Text
-  isLocked        Boolean   @default(false)
-  notes           String?   @db.Text
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id                       String    @id @default(uuid())
+  projectId                String
+  termNumber               Int
+  title                    String
+  percentage               Float
+  amount                   Decimal   @db.Decimal(20, 2)
+  triggerType              String    @default("manual") // date, sprint, manual
+  triggerDate              String?   // YYYY-MM-DD (Asia/Jakarta date-only)
+  requiredCompletedSprints Int?
+  triggerSprintId          String?   // Legacy field dipertahankan sampai audit consumer selesai
+  dueDate                  String?   // Legacy field dipertahankan sampai audit consumer selesai
+  status                   String    @default("planned") // planned, ready, invoiced, paid
+  readyAt                  DateTime?
+  bastUrl                  String?   @db.Text
+  bastFileName             String?
+  bastUploadedAt           DateTime?
+  invoiceNumber            String?   @unique
+  invoiceIssuedAt          DateTime?
+  invoiceDueDate           String?   // YYYY-MM-DD (Asia/Jakarta date-only)
+  paidAt                   DateTime?
+  invoicePdfUrl            String?   @db.Text
+  isLocked                 Boolean   @default(false)
+  notes                    String?   @db.Text
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
 
-  project         Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  triggerSprint   Sprint?   @relation(fields: [triggerSprintId], references: [id], onDelete: SetNull)
+  project                  Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  triggerSprint            Sprint?   @relation(fields: [triggerSprintId], references: [id], onDelete: SetNull)
 
   @@map("payment_terms")
   @@index([projectId, termNumber])
   @@index([projectId, status])
+  @@index([status, triggerType, triggerDate])
+  @@index([status, invoiceDueDate])
+  @@index([status, readyAt])
   @@index([invoiceNumber])
 }
 

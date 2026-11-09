@@ -5,13 +5,13 @@ import { asyncHandler } from "../../shared/utils/asyncHandler.js";
 import { projectIdParamSchema } from "../tasks/tasks.schema.js";
 import { financeController } from "./finance.controller.js";
 import {
-  createContractSchema,
   createPaymentSchema,
   issueInvoiceSchema,
+  markTermReadySchema,
   paymentIdParamSchema,
   paymentTermIdParamSchema,
   updatePaymentSchema,
-  uploadBastSchema,
+  updateTermSchema,
   verifyPaymentSchema,
 } from "./finance.schema.js";
 
@@ -67,7 +67,7 @@ paymentsRouter.delete(
 );
 
 // =========================================================================
-// US-4: Rute Langsung Termin & Penerbitan Invoice (/api/v1/payment-terms/:id)
+// US-3: Rute Termin & Penerbitan Invoice Manual (/api/v1/payment-terms/:id)
 // =========================================================================
 export const paymentTermsRouter = Router();
 paymentTermsRouter.use(requireAuth);
@@ -79,21 +79,32 @@ paymentTermsRouter.get(
   asyncHandler(financeController.getTermById)
 );
 
-// AC-14: Upload BAST dan tandai status siap ditagih (ready)
+// AC-3.1 & BR-TERM-08: Perbarui detail/pemicu tunggal termin yang belum terkunci
 paymentTermsRouter.patch(
-  "/:id/ready",
-  requirePermission("finance.write"),
+  "/:id",
+  requirePermission("finance.payment_terms.manage"),
   validateRequest({
     params: paymentTermIdParamSchema,
-    body: uploadBastSchema,
+    body: updateTermSchema,
+  }),
+  asyncHandler(financeController.updateTerm)
+);
+
+// BR-TERM-05: Tandai termin siap ditagih (BAST opsional)
+paymentTermsRouter.patch(
+  "/:id/ready",
+  requirePermission("finance.payment_terms.manage"),
+  validateRequest({
+    params: paymentTermIdParamSchema,
+    body: markTermReadySchema,
   }),
   asyncHandler(financeController.markTermReadyWithBast)
 );
 
-// AC-15: Terbitkan invoice resmi bernomor unik INV-YYYY-NNN/Tn dan kunci termin
+// AC-3.3 & BR-TERM-07: Catat/terbitkan invoice resmi dengan invoiceDueDate wajib dan kunci termin
 paymentTermsRouter.post(
   "/:id/invoice",
-  requirePermission("finance.write"),
+  requirePermission("finance.invoices.create"),
   validateRequest({
     params: paymentTermIdParamSchema,
     body: issueInvoiceSchema,
@@ -101,9 +112,17 @@ paymentTermsRouter.post(
   asyncHandler(financeController.issueTermInvoice)
 );
 
+// AC-3.4 & BR-TERM-08: Tandai invoice termin telah lunas (invoiced -> paid)
+paymentTermsRouter.patch(
+  "/:id/pay",
+  requirePermission("finance.invoices.create"),
+  validateRequest({ params: paymentTermIdParamSchema }),
+  asyncHandler(financeController.markTermPaid)
+);
+
 paymentTermsRouter.delete(
   "/:id",
-  requirePermission("finance.write"),
+  requirePermission("finance.payment_terms.manage"),
   validateRequest({ params: paymentTermIdParamSchema }),
   asyncHandler(financeController.deleteTerm)
 );

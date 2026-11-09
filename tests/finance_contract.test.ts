@@ -6,7 +6,7 @@ process.env.NODE_ENV = "test";
 
 const [
   { requireAnyRole },
-  { createContractSchema, uploadBastSchema, issueInvoiceSchema },
+  { createContractSchema, uploadBastSchema },
   { financeService },
   { financeRepository },
 ] = await Promise.all([
@@ -32,7 +32,7 @@ test("AC-B4-1: createContractSchema accepts when total percentage is exactly 100
         title: "Termin 2 - Progress 40%",
         percentage: 40,
         triggerType: "sprint" as const,
-        triggerSprintId: "sprint-123",
+        requiredCompletedSprints: 1,
       },
       {
         title: "Termin 3 - Pelunasan 30%",
@@ -79,72 +79,81 @@ test("AC-B4-1: createContract absorbs rounding difference into the last term exa
   const originalFindProject = financeRepository.findProjectById;
   const originalFindWithTerms = financeRepository.findProjectWithTerms;
   const originalSave = financeRepository.saveContractWithTerms;
+  const originalEval = financeRepository.evaluateProjectTermReadiness;
+  const originalFindTerms = financeRepository.findTermsByProjectId;
   const originalLog = financeRepository.logActivity;
 
-  financeRepository.findProjectById = async () =>
-    ({ id: "proj-1", name: "Proyek Alpha", contractValue: 0 } as any);
-  financeRepository.findProjectWithTerms = async () =>
-    ({ id: "proj-1", paymentTerms: [] } as any);
-
   let capturedTerms: any[] = [];
-  financeRepository.saveContractWithTerms = async (_pid, _cval, terms) => {
-    capturedTerms = terms;
-    return terms as any;
-  };
-  financeRepository.logActivity = async () => ({} as any);
+  try {
+    financeRepository.findProjectById = async () =>
+      ({ id: "proj-1", name: "Proyek Alpha", contractValue: 0 } as any);
+    financeRepository.findProjectWithTerms = async () =>
+      ({ id: "proj-1", paymentTerms: [] } as any);
 
-  // Nilai kontrak: Rp 100.000.000 dengan pembagian 33.33%, 33.33%, 33.34%
-  const result = await financeService.createContract("proj-1", {
-    contractValue: 100_000_000,
-    terms: [
-      { title: "Termin 1", percentage: 33.33, triggerType: "manual" },
-      { title: "Termin 2", percentage: 33.33, triggerType: "manual" },
-      { title: "Termin 3", percentage: 33.34, triggerType: "manual" },
-    ],
-  });
+    financeRepository.saveContractWithTerms = async (_pid, _cval, terms) => {
+      capturedTerms = terms;
+      return terms as any;
+    };
+    financeRepository.evaluateProjectTermReadiness = async () => [];
+    financeRepository.findTermsByProjectId = async () => capturedTerms as any;
+    financeRepository.logActivity = async () => ({} as any);
 
-  assert.equal(result.contractValue, 100_000_000);
-  assert.equal(capturedTerms.length, 3);
+    // Nilai kontrak: Rp 100.000.000 dengan pembagian 33.33%, 33.33%, 33.34%
+    const result = await financeService.createContract("proj-1", {
+      contractValue: 100_000_000,
+      terms: [
+        { title: "Termin 1", percentage: 33.33, triggerType: "manual" },
+        { title: "Termin 2", percentage: 33.33, triggerType: "manual" },
+        { title: "Termin 3", percentage: 33.34, triggerType: "manual" },
+      ],
+    });
 
-  // Termin 1: 33,330,000
-  assert.equal(capturedTerms[0].amount, 33_330_000);
-  // Termin 2: 33,330,000
-  assert.equal(capturedTerms[1].amount, 33_330_000);
-  // Termin 3 menyerap sisa: 100,000,000 - 66,660,000 = 33,340,000
-  assert.equal(capturedTerms[2].amount, 33_340_000);
+    assert.equal(result.contractValue, 100_000_000);
+    assert.equal(capturedTerms.length, 3);
 
-  const totalAllocated = capturedTerms.reduce((sum, t) => sum + t.amount, 0);
-  assert.equal(totalAllocated, 100_000_000);
+    // Termin 1: 33,330,000
+    assert.equal(capturedTerms[0].amount, 33_330_000);
+    // Termin 2: 33,330,000
+    assert.equal(capturedTerms[1].amount, 33_330_000);
+    // Termin 3 menyerap sisa: 100,000,000 - 66,660,000 = 33,340,000
+    assert.equal(capturedTerms[2].amount, 33_340_000);
 
-  // Restore mocks
-  financeRepository.findProjectById = originalFindProject;
-  financeRepository.findProjectWithTerms = originalFindWithTerms;
-  financeRepository.saveContractWithTerms = originalSave;
-  financeRepository.logActivity = originalLog;
+    const totalAllocated = capturedTerms.reduce((sum, t) => sum + t.amount, 0);
+    assert.equal(totalAllocated, 100_000_000);
+  } finally {
+    financeRepository.findProjectById = originalFindProject;
+    financeRepository.findProjectWithTerms = originalFindWithTerms;
+    financeRepository.saveContractWithTerms = originalSave;
+    financeRepository.evaluateProjectTermReadiness = originalEval;
+    financeRepository.findTermsByProjectId = originalFindTerms;
+    financeRepository.logActivity = originalLog;
+  }
 });
 
 test("AC-B4-1: createContract rejects modifying contract if any term is already locked", async () => {
   const originalFindProject = financeRepository.findProjectById;
   const originalFindWithTerms = financeRepository.findProjectWithTerms;
 
-  financeRepository.findProjectById = async () => ({ id: "proj-1" } as any);
-  financeRepository.findProjectWithTerms = async () =>
-    ({
-      id: "proj-1",
-      paymentTerms: [{ id: "t1", isLocked: true, invoiceNumber: "INV-2026-001/T1" }],
-    } as any);
+  try {
+    financeRepository.findProjectById = async () => ({ id: "proj-1" } as any);
+    financeRepository.findProjectWithTerms = async () =>
+      ({
+        id: "proj-1",
+        paymentTerms: [{ id: "t1", isLocked: true, invoiceNumber: "INV-2026-001/T1" }],
+      } as any);
 
-  await assert.rejects(
-    async () =>
-      financeService.createContract("proj-1", {
-        contractValue: 50_000_000,
-        terms: [{ title: "Full", percentage: 100, triggerType: "manual" }],
-      }),
-    /terdapat termin yang telah diterbitkan invoice atau terkunci/
-  );
-
-  financeRepository.findProjectById = originalFindProject;
-  financeRepository.findProjectWithTerms = originalFindWithTerms;
+    await assert.rejects(
+      async () =>
+        financeService.createContract("proj-1", {
+          contractValue: 50_000_000,
+          terms: [{ title: "Full", percentage: 100, triggerType: "manual" }],
+        }),
+      /terdapat termin yang telah diterbitkan invoice atau terkunci/
+    );
+  } finally {
+    financeRepository.findProjectById = originalFindProject;
+    financeRepository.findProjectWithTerms = originalFindWithTerms;
+  }
 });
 
 // ==============================================================
@@ -166,74 +175,74 @@ test("AC-B4-2: uploadBastSchema validates file URL or Base64 data URL", () => {
   );
 });
 
-test("AC-B4-2: markTermReadyWithBast rejects if trigger sprint is not completed", async () => {
+test("AC-B4-2: markTermReadyWithBast rejects if requiredCompletedSprints threshold is not met", async () => {
   const originalFindTerm = financeRepository.findTermById;
-  const originalFindSprint = financeRepository.findSprintById;
+  const originalCountCompleted = financeRepository.countCompletedSprints;
 
-  financeRepository.findTermById = async () =>
-    ({
-      id: "term-1",
-      projectId: "proj-1",
-      title: "Termin 2 - Selesai Sprint 1",
-      triggerType: "sprint",
-      triggerSprintId: "sprint-1",
-      status: "planned",
-    } as any);
+  try {
+    financeRepository.findTermById = async () =>
+      ({
+        id: "term-1",
+        projectId: "proj-1",
+        title: "Termin 2 - Selesai Sprint 1",
+        triggerType: "sprint",
+        requiredCompletedSprints: 2,
+        status: "planned",
+      } as any);
 
-  // Sprint masih aktif (belum completed)
-  financeRepository.findSprintById = async () =>
-    ({
-      id: "sprint-1",
-      name: "Sprint 1",
-      status: "active",
-    } as any);
+    financeRepository.countCompletedSprints = async () => 1;
 
-  await assert.rejects(
-    async () =>
-      financeService.markTermReadyWithBast("term-1", {
-        bastUrl: "https://example.com/bast.pdf",
-      }),
-    /Sprint trigger .* belum diselesaikan/
-  );
-
-  financeRepository.findTermById = originalFindTerm;
-  financeRepository.findSprintById = originalFindSprint;
+    await assert.rejects(
+      async () =>
+        financeService.markTermReadyWithBast("term-1", {
+          bastUrl: "https://example.com/bast.pdf",
+        }),
+      /membutuhkan 2 sprint selesai \(saat ini baru 1 selesai\)/
+    );
+  } finally {
+    financeRepository.findTermById = originalFindTerm;
+    financeRepository.countCompletedSprints = originalCountCompleted;
+  }
 });
 
 test("AC-B4-2: markTermReadyWithBast succeeds when BAST is uploaded and updates status to ready", async () => {
   const originalFindTerm = financeRepository.findTermById;
-  const originalUpdate = financeRepository.updateTerm;
+  const originalMarkReady = financeRepository.markTermReadyAtomically;
   const originalLog = financeRepository.logActivity;
 
-  financeRepository.findTermById = async () =>
-    ({
-      id: "term-1",
-      projectId: "proj-1",
-      title: "Termin 1 - DP",
-      triggerType: "manual",
-      status: "planned",
-    } as any);
+  try {
+    financeRepository.findTermById = async () =>
+      ({
+        id: "term-1",
+        projectId: "proj-1",
+        title: "Termin 1 - DP",
+        triggerType: "manual",
+        status: "planned",
+        readyAt: null,
+      } as any);
 
-  financeRepository.updateTerm = async (_id, data) =>
-    ({
-      id: "term-1",
-      status: data.status,
-      bastUrl: data.bastUrl,
-      bastUploadedAt: data.bastUploadedAt,
-    } as any);
-  financeRepository.logActivity = async () => ({} as any);
+    financeRepository.markTermReadyAtomically = async (_id, data) =>
+      ({
+        id: "term-1",
+        status: "ready",
+        readyAt: data.readyAt,
+        bastUrl: data.bastUrl,
+        bastUploadedAt: data.bastUploadedAt,
+      } as any);
+    financeRepository.logActivity = async () => ({} as any);
 
-  const updated = await financeService.markTermReadyWithBast("term-1", {
-    bastUrl: "https://example.com/bast-dp.pdf",
-    bastFileName: "BAST-DP.pdf",
-  });
+    const updated = await financeService.markTermReadyWithBast("term-1", {
+      bastUrl: "https://example.com/bast-dp.pdf",
+      bastFileName: "BAST-DP.pdf",
+    });
 
-  assert.equal(updated.status, "ready");
-  assert.equal(updated.bastUrl, "https://example.com/bast-dp.pdf");
-
-  financeRepository.findTermById = originalFindTerm;
-  financeRepository.updateTerm = originalUpdate;
-  financeRepository.logActivity = originalLog;
+    assert.equal(updated.status, "ready");
+    assert.equal(updated.bastUrl, "https://example.com/bast-dp.pdf");
+  } finally {
+    financeRepository.findTermById = originalFindTerm;
+    financeRepository.markTermReadyAtomically = originalMarkReady;
+    financeRepository.logActivity = originalLog;
+  }
 });
 
 // ==============================================================
@@ -242,87 +251,105 @@ test("AC-B4-2: markTermReadyWithBast succeeds when BAST is uploaded and updates 
 test("AC-B4-3: issueTermInvoice rejects if term is not in 'ready' status", async () => {
   const originalFindTerm = financeRepository.findTermById;
 
-  financeRepository.findTermById = async () =>
-    ({
-      id: "term-1",
-      title: "Termin 1",
-      status: "planned", // belum ready
-      isLocked: false,
-    } as any);
+  try {
+    financeRepository.findTermById = async () =>
+      ({
+        id: "term-1",
+        title: "Termin 1",
+        status: "planned",
+        isLocked: false,
+      } as any);
 
-  await assert.rejects(
-    async () => financeService.issueTermInvoice("term-1", {}),
-    /belum berstatus 'Siap ditagih' \(ready\)\. Unggah dokumen BAST terlebih dahulu/
-  );
-
-  financeRepository.findTermById = originalFindTerm;
+    await assert.rejects(
+      async () =>
+        financeService.issueTermInvoice("term-1", {
+          invoiceDueDate: "2026-12-01",
+        }),
+      /belum berstatus 'Siap ditagih' \(ready\)/
+    );
+  } finally {
+    financeRepository.findTermById = originalFindTerm;
+  }
 });
 
 test("AC-B4-3: issueTermInvoice generates unique INV-YYYY-NNN/Tn and locks the term", async () => {
   const originalFindTerm = financeRepository.findTermById;
-  const originalCount = financeRepository.countInvoicedTermsInYear;
-  const originalUpdate = financeRepository.updateTerm;
+  const originalIssueAtomically = financeRepository.issueInvoiceAtomically;
   const originalLog = financeRepository.logActivity;
 
-  financeRepository.findTermById = async () =>
-    ({
-      id: "term-2",
-      projectId: "proj-1",
-      termNumber: 2,
-      title: "Termin 2 - 40%",
-      amount: 40_000_000,
-      status: "ready",
-      isLocked: false,
-      invoiceNumber: null,
-    } as any);
-
-  // Ada 2 invoice sebelumnya di tahun ini
-  financeRepository.countInvoicedTermsInYear = async () => 2;
-
-  let savedData: any = null;
-  financeRepository.updateTerm = async (_id, data) => {
-    savedData = data;
-    return {
-      id: "term-2",
-      ...data,
-    } as any;
-  };
-  financeRepository.logActivity = async () => ({} as any);
-
-  const currentYear = new Date().getFullYear();
-  const issued = await financeService.issueTermInvoice("term-2", {
-    notes: "Mohon ditransfer ke rekening BCA PT Cira Digital",
-  });
-
+  const currentYear = 2026;
   const expectedInvoiceNumber = `INV-${currentYear}-003/T2`;
-  assert.equal(issued.invoiceNumber, expectedInvoiceNumber);
-  assert.equal(savedData.invoiceNumber, expectedInvoiceNumber);
-  assert.equal(savedData.status, "invoiced");
-  assert.equal(savedData.isLocked, true);
 
-  financeRepository.findTermById = originalFindTerm;
-  financeRepository.countInvoicedTermsInYear = originalCount;
-  financeRepository.updateTerm = originalUpdate;
-  financeRepository.logActivity = originalLog;
+  try {
+    financeRepository.findTermById = async () =>
+      ({
+        id: "term-2",
+        projectId: "proj-1",
+        termNumber: 2,
+        title: "Termin 2 - 40%",
+        amount: 40_000_000,
+        status: "ready",
+        isLocked: false,
+        invoiceNumber: null,
+      } as any);
+
+    let savedData: any = null;
+    financeRepository.issueInvoiceAtomically = async (_id, year, termNumber, data) => {
+      savedData = {
+        ...data,
+        invoiceNumber: `INV-${year}-003/T${termNumber}`,
+      };
+      return {
+        invoiceNumber: savedData.invoiceNumber,
+        updated: {
+          id: "term-2",
+          ...savedData,
+        } as any,
+      };
+    };
+    financeRepository.logActivity = async () => ({} as any);
+
+    const issued = await financeService.issueTermInvoice(
+      "term-2",
+      {
+        invoiceDueDate: "2026-12-10",
+        notes: "Mohon ditransfer ke rekening BCA PT Cira Digital",
+      },
+      undefined,
+      new Date("2026-11-10T05:00:00.000Z")
+    );
+
+    assert.equal(issued.invoiceNumber, expectedInvoiceNumber);
+    assert.equal(savedData.invoiceNumber, expectedInvoiceNumber);
+    assert.equal(savedData.status, "invoiced");
+    assert.equal(savedData.isLocked, true);
+    assert.equal(savedData.invoiceDueDate, "2026-12-10");
+  } finally {
+    financeRepository.findTermById = originalFindTerm;
+    financeRepository.issueInvoiceAtomically = originalIssueAtomically;
+    financeRepository.logActivity = originalLog;
+  }
 });
 
 test("AC-B4-3: deleteTerm strictly rejects deleting a locked/invoiced term", async () => {
   const originalFindTerm = financeRepository.findTermById;
 
-  financeRepository.findTermById = async () =>
-    ({
-      id: "term-locked",
-      title: "Termin 1 Terkunci",
-      isLocked: true,
-      invoiceNumber: "INV-2026-001/T1",
-    } as any);
+  try {
+    financeRepository.findTermById = async () =>
+      ({
+        id: "term-locked",
+        title: "Termin 1 Terkunci",
+        isLocked: true,
+        invoiceNumber: "INV-2026-001/T1",
+      } as any);
 
-  await assert.rejects(
-    async () => financeService.deleteTerm("term-locked"),
-    /Termin yang telah memiliki invoice resmi atau berstatus terkunci tidak dapat dihapus/
-  );
-
-  financeRepository.findTermById = originalFindTerm;
+    await assert.rejects(
+      async () => financeService.deleteTerm("term-locked"),
+      /Termin yang telah memiliki invoice resmi atau berstatus terkunci tidak dapat dihapus/
+    );
+  } finally {
+    financeRepository.findTermById = originalFindTerm;
+  }
 });
 
 // ==============================================================
