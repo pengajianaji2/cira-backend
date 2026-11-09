@@ -4,10 +4,14 @@ import assert from "node:assert/strict";
 process.env.JWT_SECRET = "test_only_secret_value_at_least_32_chars_long";
 process.env.NODE_ENV = "test";
 
-const [{ validateBrowserOrigin }, { requireAuth, requireAnyRole }, { createDesignAssetSchema }, { loginSchema }, { validateRequest }, { activityFilterQuerySchema }, { loginRateLimit }, { errorHandler }, { getAllowedOrigins }, { updatePaymentSchema }, { validateCsrf }, { changePasswordSchema }, jwtModule, { prisma }] = await Promise.all([
+const [{ validateBrowserOrigin }, { requireAuth, requireAnyRole }, { createAssetUploadSchema, createDesignAssetSchema }, { assetsService }, { assetsRepository }, { cloudinaryStorage }, { BadRequestError }, { loginSchema }, { validateRequest }, { activityFilterQuerySchema }, { loginRateLimit }, { errorHandler }, { getAllowedOrigins }, { updatePaymentSchema }, { validateCsrf }, { changePasswordSchema }, jwtModule, { prisma }] = await Promise.all([
   import("../src/shared/middlewares/validateBrowserOrigin.js"),
   import("../src/shared/middlewares/auth.middleware.js"),
   import("../src/features/assets/assets.schema.js"),
+  import("../src/features/assets/assets.service.js"),
+  import("../src/features/assets/assets.repository.js"),
+  import("../src/features/assets/cloudinary.service.js"),
+  import("../src/shared/errors/AppError.js"),
   import("../src/features/auth/auth.schema.js"),
   import("../src/shared/middlewares/validateRequest.js"),
   import("../src/features/activity/activity.schema.js"),
@@ -92,15 +96,69 @@ test("authentication middleware accepts a valid HS256 token and rejects forged t
   assert.equal((rejected as { statusCode: number }).statusCode, 401);
 });
 
-test("asset upload validation rejects SVG, mismatched MIME, and oversized data URLs", () => {
-  const base = {
-    name: "asset.png", originalSize: 10, compressedSize: 8, compressionRatio: 20,
-    dataUrl: "data:image/png;base64,aGVsbG8=", mimeType: "image/png",
+test("asset upload validation rejects SVG, invalid upload metadata, mismatched MIME, and oversized Cloudinary objects", async (t) => {
+  const validPublicId = "11111111-1111-4111-8111-111111111111";
+  const baseAssetPayload = {
+    name: "asset.png",
+    originalSize: 10,
+    publicId: validPublicId,
+    compressionRatio: 20,
+    mimeType: "image/png" as const,
   };
-  assert.equal(createDesignAssetSchema.safeParse(base).success, true);
-  assert.equal(createDesignAssetSchema.safeParse({ ...base, mimeType: "image/jpeg" }).success, false);
-  assert.equal(createDesignAssetSchema.safeParse({ ...base, dataUrl: "data:image/svg+xml;base64,PHN2Zz4=" }).success, false);
-  assert.equal(createDesignAssetSchema.safeParse({ ...base, dataUrl: `data:image/png;base64,${"a".repeat(2_600_000)}` }).success, false);
+  assert.equal(createDesignAssetSchema.safeParse(baseAssetPayload).success, true);
+  assert.equal(createDesignAssetSchema.safeParse({ ...baseAssetPayload, mimeType: "image/svg+xml" }).success, false);
+  assert.equal(createDesignAssetSchema.safeParse({ ...baseAssetPayload, publicId: "../traversal" }).success, false);
+
+  assert.equal(createAssetUploadSchema.safeParse({ name: "asset.png", originalSize: 1024, mimeType: "image/png" }).success, true);
+  assert.equal(createAssetUploadSchema.safeParse({ name: "bad.svg", originalSize: 1024, mimeType: "image/svg+xml" }).success, false);
+  assert.equal(createAssetUploadSchema.safeParse({ name: "huge.png", originalSize: 20_000_001, mimeType: "image/png" }).success, false);
+
+  const originalFindProjectById = assetsRepository.findProjectById;
+  const originalVerifyUpload = cloudinaryStorage.verifyUpload;
+  const originalDestroy = cloudinaryStorage.destroy;
+
+  t.after(() => {
+    assetsRepository.findProjectById = originalFindProjectById;
+    cloudinaryStorage.verifyUpload = originalVerifyUpload;
+    cloudinaryStorage.destroy = originalDestroy;
+  });
+
+  const destroyedRefs: string[] = [];
+  assetsRepository.findProjectById = (async () => ({ id: "proj-1" })) as unknown as typeof assetsRepository.findProjectById;
+  cloudinaryStorage.destroy = async (ref) => {
+    destroyedRefs.push(ref);
+  };
+
+  cloudinaryStorage.verifyUpload = async () => ({
+    resource_type: "image",
+    format: "png",
+    bytes: 512,
+    public_id: `cira-pm/projects/proj-1/assets/${validPublicId}`,
+  });
+
+  await assert.rejects(
+    () =>
+      assetsService.createAsset("proj-1", {
+        ...baseAssetPayload,
+        mimeType: "image/jpeg",
+      }),
+    (error: unknown) => error instanceof BadRequestError,
+  );
+  assert.equal(destroyedRefs.length, 1);
+
+  destroyedRefs.length = 0;
+  cloudinaryStorage.verifyUpload = async () => ({
+    resource_type: "image",
+    format: "png",
+    bytes: 2_000_001,
+    public_id: `cira-pm/projects/proj-1/assets/${validPublicId}`,
+  });
+
+  await assert.rejects(
+    () => assetsService.createAsset("proj-1", baseAssetPayload),
+    (error: unknown) => error instanceof BadRequestError,
+  );
+  assert.equal(destroyedRefs.length, 1);
 });
 
 test("payment proof validation preserves image/PDF data URLs and rejects active URL schemes", () => {

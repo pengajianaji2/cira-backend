@@ -28,12 +28,12 @@ export const errorHandler: ErrorRequestHandler = (
     message = "Data yang diminta tidak ditemukan.";
   }
 
-  const requestId = res.locals.requestId as string | undefined;
+  const requestId = res.locals?.requestId as string | undefined;
   if (statusCode >= 500) {
     console.error(JSON.stringify({
       level: "error",
       event: "http_request_failed",
-      requestId,
+      ...(requestId ? { requestId } : {}),
       method: req.method,
       path: req.path,
       statusCode,
@@ -46,6 +46,6 @@ export const errorHandler: ErrorRequestHandler = (
     success: false,
     message,
     error: errorDetails,
-    requestId,
+    ...(requestId ? { requestId } : {}),
   });
 };
