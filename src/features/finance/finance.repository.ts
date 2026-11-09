@@ -1,4 +1,7 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../config/db.config.js";
+import { ConflictError } from "../../shared/errors/AppError.js";
+import { getBusinessDateWib } from "../../shared/utils/businessDate.js";
 import { CreatePaymentDto } from "./finance.types.js";
 
 const termIncludes = {
@@ -10,6 +13,105 @@ const termIncludes = {
     },
   },
 };
+
+export interface TermEvaluationActor {
+  id?: string;
+  name?: string;
+  role?: string;
+}
+
+/**
+ * BR-TERM-03, BR-TERM-04, BR-TERM-06:
+ * Evaluator idempotent kesiapan termin (date & sprint) di dalam transaksi Prisma.
+ * - Mengubah status planned -> ready dan mengisi readyAt HANYA sekali.
+ * - Evaluasi ulang tidak menggeser readyAt, tidak menduplikasi history, dan tidak membuat invoice.
+ */
+export async function evaluateProjectTermReadinessInTx(
+  tx: Prisma.TransactionClient,
+  projectId: string,
+  now: Date = new Date(),
+  actor?: TermEvaluationActor
+): Promise<string[]> {
+  const todayWib = getBusinessDateWib(now);
+  const completedSprintCount = await tx.sprint.count({
+    where: { projectId, status: "completed" },
+  });
+
+  const candidates = await tx.paymentTerm.findMany({
+    where: {
+      projectId,
+      status: "planned",
+      OR: [
+        {
+          triggerType: "date",
+          triggerDate: { not: null, lte: todayWib },
+        },
+        {
+          triggerType: "sprint",
+          requiredCompletedSprints: { not: null, lte: completedSprintCount },
+        },
+      ],
+    },
+    select: {
+      id: true,
+      termNumber: true,
+      title: true,
+      triggerType: true,
+      triggerDate: true,
+      requiredCompletedSprints: true,
+    },
+  });
+
+  if (candidates.length === 0) {
+    return [];
+  }
+
+  const transitionedIds: string[] = [];
+
+  for (const term of candidates) {
+    const changed = await tx.paymentTerm.updateMany({
+      where: {
+        id: term.id,
+        status: "planned",
+        readyAt: null,
+      },
+      data: {
+        status: "ready",
+        readyAt: now,
+      },
+    });
+
+    if (changed.count === 1) {
+      await tx.activityLog.create({
+        data: {
+          projectId,
+          category: "finance",
+          action: "TERM_READY",
+          description:
+            term.triggerType === "sprint"
+              ? `Termin #${term.termNumber} "${term.title}" otomatis siap ditagih (${completedSprintCount}/${term.requiredCompletedSprints} sprint selesai).`
+              : `Termin #${term.termNumber} "${term.title}" otomatis siap ditagih (tanggal pemicu ${term.triggerDate} WIB tercapai).`,
+          userId: actor?.id,
+          userName: actor?.name,
+          userRole: actor?.role,
+          metadata: {
+            termId: term.id,
+            termNumber: term.termNumber,
+            triggerType: term.triggerType,
+            triggerDate: term.triggerDate,
+            requiredCompletedSprints: term.requiredCompletedSprints,
+            completedSprintCount,
+            readyAt: now.toISOString(),
+            automated: true,
+          },
+        },
+      });
+      transitionedIds.push(term.id);
+    }
+  }
+
+  return transitionedIds;
+}
 
 export const financeRepository = {
   async findProjectById(projectId: string) {
@@ -49,11 +151,27 @@ export const financeRepository = {
     });
   },
 
+  async countCompletedSprints(projectId: string): Promise<number> {
+    return prisma.sprint.count({
+      where: { projectId, status: "completed" },
+    });
+  },
+
   async findSprintById(sprintId: string) {
     return prisma.sprint.findUnique({
       where: { id: sprintId },
       select: { id: true, name: true, status: true },
     });
+  },
+
+  async evaluateProjectTermReadiness(
+    projectId: string,
+    now: Date = new Date(),
+    actor?: TermEvaluationActor
+  ): Promise<string[]> {
+    return prisma.$transaction((tx) =>
+      evaluateProjectTermReadinessInTx(tx, projectId, now, actor)
+    );
   },
 
   async saveContractWithTerms(
@@ -65,6 +183,8 @@ export const financeRepository = {
       percentage: number;
       amount: number;
       triggerType: string;
+      triggerDate?: string | null;
+      requiredCompletedSprints?: number | null;
       triggerSprintId?: string | null;
       dueDate?: string | null;
       notes?: string | null;
@@ -93,10 +213,13 @@ export const financeRepository = {
             percentage: t.percentage,
             amount: t.amount,
             triggerType: t.triggerType,
-            triggerSprintId: t.triggerSprintId || null,
-            dueDate: t.dueDate || null,
-            notes: t.notes || null,
+            triggerDate: t.triggerDate ?? null,
+            requiredCompletedSprints: t.requiredCompletedSprints ?? null,
+            triggerSprintId: t.triggerSprintId ?? null,
+            dueDate: t.dueDate ?? null,
+            notes: t.notes ?? null,
             status: "planned",
+            readyAt: null,
             isLocked: false,
           },
           include: termIncludes,
@@ -108,11 +231,53 @@ export const financeRepository = {
     });
   },
 
-  async updateTerm(id: string, data: any) {
+  async updateTerm(id: string, data: Record<string, unknown>) {
     return prisma.paymentTerm.update({
       where: { id },
       data,
       include: termIncludes,
+    });
+  },
+
+  async markTermReadyAtomically(
+    id: string,
+    data: {
+      readyAt: Date;
+      bastUrl?: string | null;
+      bastFileName?: string | null;
+      bastUploadedAt?: Date | null;
+      notes?: string | null;
+    }
+  ) {
+    return prisma.$transaction(async (tx) => {
+      const changed = await tx.paymentTerm.updateMany({
+        where: { id, status: "planned", isLocked: false },
+        data: {
+          status: "ready",
+          readyAt: data.readyAt,
+          ...(data.bastUrl !== undefined ? { bastUrl: data.bastUrl } : {}),
+          ...(data.bastFileName !== undefined ? { bastFileName: data.bastFileName } : {}),
+          ...(data.bastUploadedAt !== undefined ? { bastUploadedAt: data.bastUploadedAt } : {}),
+          ...(data.notes !== undefined ? { notes: data.notes } : {}),
+        },
+      });
+      if (changed.count !== 1) return null;
+      return tx.paymentTerm.findUnique({ where: { id }, include: termIncludes });
+    });
+  },
+
+  async markTermPaidAtomically(id: string, paidAt: Date) {
+    return prisma.$transaction(async (tx) => {
+      const changed = await tx.paymentTerm.updateMany({
+        where: { id, status: "invoiced" },
+        data: {
+          status: "paid",
+          paidAt,
+          isLocked: true,
+        },
+      });
+      if (changed.count !== 1) return null;
+      return tx.paymentTerm.findUnique({ where: { id }, include: termIncludes });
     });
   },
 
@@ -136,19 +301,63 @@ export const financeRepository = {
     id: string,
     year: number,
     termNumber: number,
-    data: { invoiceIssuedAt: Date; status: string; isLocked: boolean; invoicePdfUrl: string | null; notes: string | null },
+    data: {
+      invoiceNumber?: string;
+      invoiceDueDate: string;
+      invoiceIssuedAt: Date;
+      status: string;
+      isLocked: boolean;
+      invoicePdfUrl: string | null;
+      notes: string | null;
+    }
   ) {
     return prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`cira-invoice-${year}`}))`;
-      const count = await tx.paymentTerm.count({ where: { invoiceNumber: { startsWith: `INV-${year}-` } } });
-      const invoiceNumber = `INV-${year}-${String(count + 1).padStart(3, "0")}`;
+
+      let finalInvoiceNumber = data.invoiceNumber?.trim();
+      if (finalInvoiceNumber) {
+        const duplicate = await tx.paymentTerm.findFirst({
+          where: { invoiceNumber: finalInvoiceNumber, id: { not: id } },
+          select: { id: true },
+        });
+        if (duplicate) {
+          throw new ConflictError(
+            `Nomor invoice "${finalInvoiceNumber}" sudah digunakan oleh termin lain.`
+          );
+        }
+      } else {
+        const count = await tx.paymentTerm.count({
+          where: { invoiceNumber: { startsWith: `INV-${year}-` } },
+        });
+        let seq = count + 1;
+        finalInvoiceNumber = `INV-${year}-${String(seq).padStart(3, "0")}/T${termNumber}`;
+        while (
+          await tx.paymentTerm.findFirst({
+            where: { invoiceNumber: finalInvoiceNumber },
+            select: { id: true },
+          })
+        ) {
+          seq += 1;
+          finalInvoiceNumber = `INV-${year}-${String(seq).padStart(3, "0")}/T${termNumber}`;
+        }
+      }
+
       const changed = await tx.paymentTerm.updateMany({
         where: { id, status: "ready", isLocked: false, invoiceNumber: null },
-        data: { ...data, invoiceNumber: `${invoiceNumber}/T${termNumber}` },
+        data: {
+          status: data.status,
+          isLocked: data.isLocked,
+          invoiceIssuedAt: data.invoiceIssuedAt,
+          invoiceDueDate: data.invoiceDueDate,
+          invoicePdfUrl: data.invoicePdfUrl,
+          notes: data.notes,
+          invoiceNumber: finalInvoiceNumber,
+        },
       });
       if (changed.count !== 1) return null;
+
       const updated = await tx.paymentTerm.findUnique({ where: { id }, include: termIncludes });
-      return { invoiceNumber: `${invoiceNumber}/T${termNumber}`, updated };
+      return { invoiceNumber: finalInvoiceNumber, updated };
     });
   },
 

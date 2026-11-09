@@ -3,10 +3,6 @@ import { sendSuccess } from "../../shared/utils/responseFormatter.js";
 import { financeService } from "./finance.service.js";
 
 export const financeController = {
-  // =========================================================================
-  // US-4: Kontrak & Termin Pembayaran 100%
-  // =========================================================================
-
   async createProjectContract(req: Request, res: Response): Promise<Response> {
     const projectId = req.params.projectId as string;
     const result = await financeService.createContract(projectId, req.body, req.user);
@@ -25,16 +21,28 @@ export const financeController = {
     return sendSuccess(res, "Detail termin pembayaran berhasil diambil", term);
   },
 
+  async updateTerm(req: Request, res: Response): Promise<Response> {
+    const id = req.params.id as string;
+    const term = await financeService.updateTerm(id, req.body, req.user);
+    return sendSuccess(res, "Termin pembayaran berhasil diperbarui", term);
+  },
+
   async markTermReadyWithBast(req: Request, res: Response): Promise<Response> {
     const id = req.params.id as string;
-    const term = await financeService.markTermReadyWithBast(id, req.body, req.user);
-    return sendSuccess(res, "Dokumen BAST berhasil diunggah. Termin siap ditagih.", term);
+    const term = await financeService.markTermReadyWithBast(id, req.body ?? {}, req.user);
+    return sendSuccess(res, "Status termin berhasil diperbarui menjadi Siap ditagih.", term);
   },
 
   async issueTermInvoice(req: Request, res: Response): Promise<Response> {
     const id = req.params.id as string;
     const term = await financeService.issueTermInvoice(id, req.body, req.user);
     return sendSuccess(res, `Invoice resmi ${term.invoiceNumber} berhasil diterbitkan`, term);
+  },
+
+  async markTermPaid(req: Request, res: Response): Promise<Response> {
+    const id = req.params.id as string;
+    const term = await financeService.markTermPaid(id, req.user);
+    return sendSuccess(res, "Termin pembayaran berhasil ditandai Lunas", term);
   },
 
   async deleteTerm(req: Request, res: Response): Promise<Response> {

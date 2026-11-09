@@ -6,6 +6,8 @@ export const PERMISSION_CATALOG = [
   { key: "projects.contract.update", label: "Ubah nilai kontrak", group: "Keuangan" },
   { key: "finance.read", label: "Lihat informasi keuangan", group: "Keuangan" },
   { key: "finance.write", label: "Kelola pembayaran, termin, dan invoice", group: "Keuangan" },
+  { key: "finance.payment_terms.manage", label: "Kelola pemicu dan kesiapan termin", group: "Keuangan" },
+  { key: "finance.invoices.create", label: "Catat invoice resmi dan pelunasan termin", group: "Keuangan" },
   { key: "tasks.write", label: "Buat dan ubah task", group: "Task & Sprint" },
   { key: "tasks.delete", label: "Hapus task", group: "Task & Sprint" },
   { key: "sprints.write", label: "Kelola sprint", group: "Task & Sprint" },
@@ -29,5 +31,5 @@ const all = PERMISSION_CATALOG.map(({ key }) => key) as PermissionKey[];
 export const DEFAULT_ROLE_POLICIES: Record<string, PermissionKey[]> = {
   owner: all,
   developer: ["projects.read", "projects.create", "projects.update", "tasks.write", "sprints.write", "repositories.write", "prd.write", "assets.write", "activities.read", "directory.read", "status.request", "status.vote"],
-  operasional: ["projects.read", "finance.read", "finance.write", "projects.contract.update", "tasks.write", "sprints.write", "roster.manage", "status.request", "status.vote", "assets.write", "activities.read", "directory.read"],
+  operasional: ["projects.read", "finance.read", "finance.write", "finance.payment_terms.manage", "finance.invoices.create", "projects.contract.update", "tasks.write", "sprints.write", "roster.manage", "status.request", "status.vote", "assets.write", "activities.read", "directory.read"],
 };
