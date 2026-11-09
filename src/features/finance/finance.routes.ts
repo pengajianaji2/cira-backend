@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { requireAuth, requirePermission } from "../../shared/middlewares/auth.middleware.js";
+import { requireProjectResourceAccess } from "../../shared/middlewares/projectAccess.js";
 import { validateRequest } from "../../shared/middlewares/validateRequest.js";
 import { asyncHandler } from "../../shared/utils/asyncHandler.js";
 import { projectIdParamSchema } from "../tasks/tasks.schema.js";
@@ -46,6 +47,7 @@ paymentsRouter.patch(
     params: paymentIdParamSchema,
     body: verifyPaymentSchema,
   }),
+  requireProjectResourceAccess("payment"),
   asyncHandler(financeController.verifyPayment)
 );
 
@@ -56,6 +58,7 @@ paymentsRouter.patch(
     params: paymentIdParamSchema,
     body: updatePaymentSchema,
   }),
+  requireProjectResourceAccess("payment"),
   asyncHandler(financeController.updatePayment)
 );
 
@@ -63,6 +66,7 @@ paymentsRouter.delete(
   "/:id",
   requirePermission("finance.write"),
   validateRequest({ params: paymentIdParamSchema }),
+  requireProjectResourceAccess("payment"),
   asyncHandler(financeController.deletePayment)
 );
 
@@ -76,6 +80,7 @@ paymentTermsRouter.get(
   "/:id",
   requirePermission("finance.read"),
   validateRequest({ params: paymentTermIdParamSchema }),
+  requireProjectResourceAccess("paymentTerm"),
   asyncHandler(financeController.getTermById)
 );
 
@@ -87,6 +92,7 @@ paymentTermsRouter.patch(
     params: paymentTermIdParamSchema,
     body: updateTermSchema,
   }),
+  requireProjectResourceAccess("paymentTerm"),
   asyncHandler(financeController.updateTerm)
 );
 
@@ -98,6 +104,7 @@ paymentTermsRouter.patch(
     params: paymentTermIdParamSchema,
     body: markTermReadySchema,
   }),
+  requireProjectResourceAccess("paymentTerm"),
   asyncHandler(financeController.markTermReadyWithBast)
 );
 
@@ -109,6 +116,7 @@ paymentTermsRouter.post(
     params: paymentTermIdParamSchema,
     body: issueInvoiceSchema,
   }),
+  requireProjectResourceAccess("paymentTerm"),
   asyncHandler(financeController.issueTermInvoice)
 );
 
@@ -117,6 +125,7 @@ paymentTermsRouter.patch(
   "/:id/pay",
   requirePermission("finance.invoices.create"),
   validateRequest({ params: paymentTermIdParamSchema }),
+  requireProjectResourceAccess("paymentTerm"),
   asyncHandler(financeController.markTermPaid)
 );
 
@@ -124,6 +133,7 @@ paymentTermsRouter.delete(
   "/:id",
   requirePermission("finance.payment_terms.manage"),
   validateRequest({ params: paymentTermIdParamSchema }),
+  requireProjectResourceAccess("paymentTerm"),
   asyncHandler(financeController.deleteTerm)
 );
 

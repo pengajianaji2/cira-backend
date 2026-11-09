@@ -14,7 +14,7 @@ const envSchema = z.object({
   APP_PUBLIC_URL: z.preprocess((value) => value === "" ? undefined : value, z.string().url().optional()),
   GMAIL_USER: z.preprocess((value) => value === "" ? undefined : value, z.string().email().optional()),
   GMAIL_APP_PASSWORD: z.preprocess((value) => value === "" ? undefined : value, z.string().optional()),
-  DATABASE_URL: z.string().optional().default("postgresql://postgres:postgres@localhost:5432/postgres"),
+  DATABASE_URL: z.string().url().optional(),
   DIRECT_URL: z.string().optional(),
   JWT_SECRET: z
     .string()
@@ -42,6 +42,19 @@ if (!parsed.success) {
 }
 
 export const env = parsed.data;
+
+if (env.NODE_ENV === "production") {
+  if (!env.DATABASE_URL) {
+    throw new Error("DATABASE_URL wajib diatur pada production.");
+  }
+  const databaseUrl = new URL(env.DATABASE_URL);
+  if (!/^postgres(ql)?:$/.test(databaseUrl.protocol) || ["localhost", "127.0.0.1", "::1"].includes(databaseUrl.hostname)) {
+    throw new Error("DATABASE_URL production harus menunjuk PostgreSQL non-local.");
+  }
+}
+
+// Local development may use the conventional local PostgreSQL instance.
+env.DATABASE_URL ??= "postgresql://postgres:postgres@localhost:5432/postgres";
 
 if (Boolean(env.GMAIL_USER) !== Boolean(env.GMAIL_APP_PASSWORD)) {
   throw new Error("GMAIL_USER dan GMAIL_APP_PASSWORD harus diisi bersama.");

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { requireAuth, requirePermission, requirePermissionWhenPresent } from "../../shared/middlewares/auth.middleware.js";
+import { requireProjectAccess } from "../../shared/middlewares/projectAccess.js";
 import { validateRequest } from "../../shared/middlewares/validateRequest.js";
 import { asyncHandler } from "../../shared/utils/asyncHandler.js";
 import { projectActivitiesRouter } from "../activity/activity.routes.js";
@@ -39,6 +40,9 @@ const router = Router();
 // Seluruh route proyek membutuhkan autentikasi sesi
 router.use(requireAuth);
 router.use(requirePermission("projects.read"));
+
+// Restrict nested project resources to assigned roster members, except organization-wide roles.
+router.use("/:projectId/:nestedPath", requireProjectAccess("projectId"));
 
 // Sub-rute untuk relasi proyek:
 // 1. Kanban Tasks: /api/v1/projects/:projectId/tasks
@@ -238,6 +242,7 @@ router.get(
 router.get(
   "/:id",
   validateRequest({ params: projectIdParamSchema }),
+  requireProjectAccess("id"),
   asyncHandler(projectsController.getProjectById)
 );
 
@@ -248,6 +253,7 @@ router.patch(
     params: projectIdParamSchema,
     body: updateProjectSchema,
   }),
+  requireProjectAccess("id"),
   requirePermissionWhenPresent("prd.write", "prdContent"),
   asyncHandler(projectsController.updateProject)
 );

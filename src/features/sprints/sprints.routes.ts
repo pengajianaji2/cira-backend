@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { requireAuth, requirePermission } from "../../shared/middlewares/auth.middleware.js";
+import { requireProjectResourceAccess } from "../../shared/middlewares/projectAccess.js";
 import { validateRequest } from "../../shared/middlewares/validateRequest.js";
 import { asyncHandler } from "../../shared/utils/asyncHandler.js";
 import { sprintsController } from "./sprints.controller.js";
@@ -49,6 +50,7 @@ sprintsRouter.get(
   "/:id",
   requirePermission("projects.read"),
   validateRequest({ params: sprintIdParamSchema }),
+  requireProjectResourceAccess("sprint"),
   asyncHandler(sprintsController.getSprintById)
 );
 
@@ -59,6 +61,7 @@ sprintsRouter.patch(
     params: sprintIdParamSchema,
     body: updateSprintSchema,
   }),
+  requireProjectResourceAccess("sprint"),
   asyncHandler(sprintsController.updateSprint)
 );
 
@@ -70,6 +73,7 @@ sprintsRouter.post(
     params: sprintIdParamSchema,
     body: startSprintSchema,
   }),
+  requireProjectResourceAccess("sprint"),
   asyncHandler(sprintsController.startSprint)
 );
 
@@ -81,6 +85,7 @@ sprintsRouter.patch(
     params: sprintIdParamSchema,
     body: closeSprintSchema,
   }),
+  requireProjectResourceAccess("sprint"),
   asyncHandler(sprintsController.completeSprint)
 );
 
@@ -91,6 +96,7 @@ sprintsRouter.post(
     params: sprintIdParamSchema,
     body: closeSprintSchema,
   }),
+  requireProjectResourceAccess("sprint"),
   asyncHandler(sprintsController.completeSprint)
 );
 
@@ -98,6 +104,7 @@ sprintsRouter.post(
   "/:id/reopen",
   requirePermission("sprints.write"),
   validateRequest({ params: sprintIdParamSchema }),
+  requireProjectResourceAccess("sprint"),
   asyncHandler(sprintsController.reopenSprint)
 );
 
@@ -105,6 +112,7 @@ sprintsRouter.delete(
   "/:id",
   requirePermission("sprints.delete"),
   validateRequest({ params: sprintIdParamSchema }),
+  requireProjectResourceAccess("sprint"),
   asyncHandler(sprintsController.deleteSprint)
 );
 
@@ -115,6 +123,7 @@ sprintsRouter.post(
     params: sprintIdParamSchema,
     body: assignTasksSchema,
   }),
+  requireProjectResourceAccess("sprint"),
   asyncHandler(sprintsController.assignTasks)
 );
 

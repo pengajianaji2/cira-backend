@@ -2,7 +2,7 @@ import { gzip } from "node:zlib";
 import { promisify } from "node:util";
 import { NotFoundError } from "../../shared/errors/AppError.js";
 import { AuthUserPayload } from "../../shared/middlewares/auth.middleware.js";
-import { projectsRepository } from "./projects.repository.js";
+import { projectsRepository, ProjectVisibilityScope } from "./projects.repository.js";
 import { CreateProjectDto, ProjectListingQuery, ProjectQueryFilter, UpdateProjectDto } from "./projects.types.js";
 import { cloudinaryStorage, withResolvedUserAvatar } from "../assets/cloudinary.service.js";
 import { prisma } from "../../config/db.config.js";
@@ -29,6 +29,11 @@ Latar belakang proyek dan permasalahan utama yang dihadapi oleh klien ${clientNa
 };
 const gzipAsync = promisify(gzip);
 
+const visibilityScope = (user: AuthUserPayload): ProjectVisibilityScope => {
+  const roles = user.roles.map((role) => role === "ops" ? "operasional" : role === "dev" ? "developer" : role);
+  return { userId: user.id, organizationWide: roles.includes("owner") || roles.includes("operasional") };
+};
+
 /** Service domain manajemen proyek, inisialisasi roster pembuat proyek, arsip versi PRD GZIP awal, dan nilai kontrak. */
 export const projectsService = {
   /**
@@ -36,12 +41,12 @@ export const projectsService = {
    *
    * @param filters - Filter opsional status pipeline dan kata kunci pencarian.
    */
-  async getAllProjects(filters: ProjectQueryFilter) {
-    return (await projectsRepository.findMany(filters)).map((project) => ({ ...project, contractValue: Number(project.contractValue), owner: withResolvedUserAvatar(project.owner) }));
+  async getAllProjects(filters: ProjectQueryFilter, user: AuthUserPayload) {
+    return (await projectsRepository.findMany(filters, visibilityScope(user))).map((project) => ({ ...project, contractValue: Number(project.contractValue), owner: withResolvedUserAvatar(project.owner) }));
   },
 
-  async getProjectPage(filters: ProjectListingQuery) {
-    const result = await projectsRepository.findPage(filters);
+  async getProjectPage(filters: ProjectListingQuery, user: AuthUserPayload) {
+    const result = await projectsRepository.findPage(filters, visibilityScope(user));
     return {
       ...result,
       items: result.items.map((project) => ({ ...project, contractValue: Number(project.contractValue), owner: withResolvedUserAvatar(project.owner) })),

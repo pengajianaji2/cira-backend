@@ -8,7 +8,13 @@ const unsafeMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 export const validateBrowserOrigin = (req: Request, _res: Response, next: NextFunction): void => {
   const origin = req.get("Origin");
-  // Non-browser clients generally omit Origin and are authenticated explicitly.
+  const usesCookieSession = Boolean(req.cookies?.token);
+  // Browsers send Origin on unsafe requests. A cookie-authenticated unsafe request
+  // without it is ambiguous and would bypass the cross-site origin check.
+  if (unsafeMethods.has(req.method) && usesCookieSession && !origin) {
+    return next(new ForbiddenError("Origin request tidak ditemukan."));
+  }
+  // Non-browser bearer-token clients may omit Origin; browser requests may not use an untrusted one.
   if (unsafeMethods.has(req.method) && origin && !allowedOrigins.has(origin)) {
     return next(new ForbiddenError("Origin request tidak diizinkan."));
   }

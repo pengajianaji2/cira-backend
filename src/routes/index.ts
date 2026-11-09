@@ -38,6 +38,7 @@ apiRouter.get("/health", (_req, res) => {
 apiRouter.get("/ready", async (_req, res) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
+    await prisma.$queryRaw`SELECT "keyHash" FROM "auth_rate_limits" LIMIT 0`;
     return res.status(200).json({ status: "ready", service: "cira-pm-backend" });
   } catch {
     return res.status(503).json({ status: "not_ready", service: "cira-pm-backend" });

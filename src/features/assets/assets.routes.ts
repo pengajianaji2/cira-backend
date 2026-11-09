@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { requireAuth, requirePermission } from "../../shared/middlewares/auth.middleware.js";
+import { requireProjectResourceAccess } from "../../shared/middlewares/projectAccess.js";
 import { validateRequest } from "../../shared/middlewares/validateRequest.js";
 import { asyncHandler } from "../../shared/utils/asyncHandler.js";
 import { projectIdParamSchema, taskIdParamSchema } from "../tasks/tasks.schema.js";
@@ -49,6 +50,7 @@ assetsRouter.delete(
   "/:id",
   requirePermission("assets.write"),
   validateRequest({ params: taskIdParamSchema }),
+  requireProjectResourceAccess("asset"),
   asyncHandler(assetsController.deleteAsset)
 );
 

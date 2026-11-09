@@ -2,9 +2,18 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../../config/db.config.js";
 import { CreateProjectDto, ProjectListingQuery, ProjectQueryFilter, UpdateProjectDto } from "./projects.types.js";
 
+export interface ProjectVisibilityScope {
+  userId: string;
+  organizationWide: boolean;
+}
+
+const visibilityWhere = (scope: ProjectVisibilityScope): Prisma.ProjectWhereInput =>
+  scope.organizationWide ? {} : { roster: { some: { userId: scope.userId } } };
+
 export const projectsRepository = {
-  async findPage(filters: ProjectListingQuery) {
+  async findPage(filters: ProjectListingQuery, scope: ProjectVisibilityScope) {
     const where: Prisma.ProjectWhereInput = {
+      ...visibilityWhere(scope),
       ...(filters.status ? { status: filters.status } : {}),
       ...(filters.search ? {
         OR: [
@@ -13,12 +22,15 @@ export const projectsRepository = {
         ],
       } : {}),
     };
-    const countsWhere: Prisma.ProjectWhereInput = filters.search ? {
+    const countsWhere: Prisma.ProjectWhereInput = {
+      ...visibilityWhere(scope),
+      ...(filters.search ? {
       OR: [
         { name: { contains: filters.search, mode: "insensitive" } },
         { clientName: { contains: filters.search, mode: "insensitive" } },
       ],
-    } : {};
+      } : {}),
+    };
     const [items, total, groupedCounts] = await Promise.all([
       prisma.project.findMany({
         where,
@@ -40,8 +52,8 @@ export const projectsRepository = {
     };
   },
 
-  async findMany(filters: ProjectQueryFilter) {
-    const where: any = {};
+  async findMany(filters: ProjectQueryFilter, scope: ProjectVisibilityScope) {
+    const where: Prisma.ProjectWhereInput = { ...visibilityWhere(scope) };
 
     if (filters.status) {
       where.status = filters.status;

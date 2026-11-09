@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { requireAuth, requirePermission } from "../../shared/middlewares/auth.middleware.js";
+import { requireProjectResourceAccess } from "../../shared/middlewares/projectAccess.js";
 import { validateRequest } from "../../shared/middlewares/validateRequest.js";
 import { asyncHandler } from "../../shared/utils/asyncHandler.js";
 import { tasksController } from "./tasks.controller.js";
@@ -44,6 +45,7 @@ tasksRouter.patch(
     params: taskIdParamSchema,
     body: updateTaskStatusSchema,
   }),
+  requireProjectResourceAccess("task"),
   asyncHandler(tasksController.updateTaskStatus)
 );
 
@@ -54,6 +56,7 @@ tasksRouter.patch(
     params: taskIdParamSchema,
     body: moveTaskToSprintSchema,
   }),
+  requireProjectResourceAccess("task"),
   asyncHandler(tasksController.moveTaskToSprint)
 );
 
@@ -64,6 +67,7 @@ tasksRouter.patch(
     params: taskIdParamSchema,
     body: updateTaskSchema,
   }),
+  requireProjectResourceAccess("task"),
   asyncHandler(tasksController.updateTask)
 );
 
@@ -72,6 +76,7 @@ tasksRouter.delete(
   "/:id",
   requirePermission("tasks.delete"),
   validateRequest({ params: taskIdParamSchema }),
+  requireProjectResourceAccess("task"),
   asyncHandler(tasksController.deleteTask)
 );
 

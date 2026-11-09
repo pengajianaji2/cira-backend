@@ -10,12 +10,12 @@ export const projectsController = {
   },
 
   async getAllProjects(req: Request, res: Response): Promise<Response> {
-    const projects = await projectsService.getAllProjects(res.locals.validatedQuery);
+    const projects = await projectsService.getAllProjects(res.locals.validatedQuery, req.user!);
     return sendSuccess(res, "Daftar proyek berhasil diambil", projects);
   },
 
-  async getProjectPage(_req: Request, res: Response): Promise<Response> {
-    const result = await projectsService.getProjectPage(res.locals.validatedQuery);
+  async getProjectPage(req: Request, res: Response): Promise<Response> {
+    const result = await projectsService.getProjectPage(res.locals.validatedQuery, req.user!);
     return sendSuccess(res, "Daftar proyek berhasil diambil", result);
   },
 

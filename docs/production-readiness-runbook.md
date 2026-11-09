@@ -4,6 +4,14 @@ Panduan ini mencakup perubahan sesi autentikasi, constraint status, penyimpanan 
 
 ## 1. Sebelum migrasi
 
+0. Jalankan preflight terhadap database target yang benar dari direktori backend. Pastikan `DIRECT_URL` atau `DATABASE_URL` disetel secara eksplisit dan tidak menunjuk database lokal/production yang keliru:
+
+   ```bash
+   npx prisma migrate status
+   ```
+
+   Jika perintah gagal karena koneksi, hentikan rilis dan perbaiki konfigurasi koneksi. Jika status menunjukkan migrasi belum diterapkan, lanjutkan hanya setelah backup dan validasi staging pada langkah berikut.
+
 1. Buat snapshot/backup PostgreSQL yang konsisten dan catat timestamp serta identitas backup.
 2. Pastikan backup dapat dipulihkan ke database staging terisolasi. Jangan menjadikan status “backup sukses” sebagai pengganti uji restore.
 3. Ambil inventaris status yang tidak dikenal sebelum constraint dipasang:
@@ -44,9 +52,12 @@ Panduan ini mencakup perubahan sesi autentikasi, constraint status, penyimpanan 
 Jalankan migrasi Prisma dari direktori backend pada database target setelah backup diverifikasi:
 
 ```bash
+npx prisma migrate status
 npx prisma migrate deploy
 npx prisma generate
 ```
+
+Migrasi `20261108010000_policy_email_and_sessions` membuat tabel `auth_rate_limits` yang dipakai middleware pembatasan login, reset password, dan verifikasi undangan. Bila endpoint `/api/v1/ready` mengembalikan 503 atau log sebelumnya berisi PostgreSQL `42P01` untuk tabel ini, periksa status migrasi pada database target. Jalankan `migrate deploy` hanya bila database target dan backup sudah terverifikasi.
 
 Urutan migrasi baru:
 
@@ -64,6 +75,12 @@ Semua migrasi di atas belum dijalankan pada database staging atau produksi dari 
 4. Deploy backend, verifikasi `/api/v1/health` dan `/api/v1/ready`, lalu deploy frontend.
 5. Verifikasi header frontend dan API melalui response HTTPS live, termasuk CSP nonce dari Next.js Proxy, `Referrer-Policy`, HSTS, `X-Content-Type-Options`, `X-Frame-Options`, CORS, cookie `HttpOnly`/`Secure`, dan CSRF.
 6. Pastikan request ID tersedia di log dan tidak ada token, cookie, body sensitif, atau data pribadi yang tercatat.
+
+### Diagnosis cookie sesi
+
+- Cira PM menerbitkan cookie sesi bernama `token` (`HttpOnly`) dan cookie `csrfToken`; kode ini tidak menerbitkan cookie `accessToken` atau `refreshToken`.
+- Jika browser localhost menunjukkan nama cookie lain, cocokkan request login dan header `Set-Cookie` di Network untuk menemukan backend penerbitnya. Periksa nama, domain, path, atribut, serta URL respons; jangan menyalin nilai cookie ke tiket, chat, atau log.
+- Cabut token pada aplikasi yang menerbitkannya, lalu hapus cookie terkait dari browser. Perubahan source Cira PM tidak dapat mencabut token yang diterbitkan backend lain.
 
 ## 4. Pemeriksaan staging pascarilis
 
