@@ -3,6 +3,12 @@ export interface CreateDesignAssetDto {
   originalSize: number;
   compressedSize: number;
   compressionRatio: number;
-  dataUrl: string;
+  storageReference: string;
   mimeType: string;
+}
+
+export interface CreateAssetUploadDto {
+  name: string;
+  originalSize: number;
+  mimeType: "image/png" | "image/jpeg" | "image/webp";
 }

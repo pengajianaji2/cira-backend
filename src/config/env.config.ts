@@ -8,6 +8,7 @@ const envSchema = z.object({
     .string()
     .default("5000")
     .transform((val) => parseInt(val, 10)),
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).default(process.env.NODE_ENV === "production" ? 1 : 0),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   FRONTEND_URL: z.string().default("http://localhost:3000"),
   APP_PUBLIC_URL: z.preprocess((value) => value === "" ? undefined : value, z.string().url().optional()),

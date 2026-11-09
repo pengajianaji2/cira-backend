@@ -14,6 +14,11 @@ export const projectsController = {
     return sendSuccess(res, "Daftar proyek berhasil diambil", projects);
   },
 
+  async getProjectPage(_req: Request, res: Response): Promise<Response> {
+    const result = await projectsService.getProjectPage(res.locals.validatedQuery);
+    return sendSuccess(res, "Daftar proyek berhasil diambil", result);
+  },
+
   async getProjectById(req: Request, res: Response): Promise<Response> {
     const id = req.params.id as string;
     const project = await projectsService.getProjectById(id);

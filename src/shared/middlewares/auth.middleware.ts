@@ -5,6 +5,17 @@ import { env } from "../../config/env.config.js";
 import { prisma } from "../../config/db.config.js";
 import { policiesService } from "../../features/auth/policies.service.js";
 
+const requestPermissionCache = new WeakMap<Request, Promise<Set<string>>>();
+
+function getRequestPermissions(req: Request): Promise<Set<string>> {
+  let permissions = requestPermissionCache.get(req);
+  if (!permissions) {
+    permissions = policiesService.forRoles(req.user?.roles ?? []).then((items) => new Set(items));
+    requestPermissionCache.set(req, permissions);
+  }
+  return permissions;
+}
+
 export interface AuthUserPayload {
   id: string;
   email: string;
@@ -83,7 +94,7 @@ export const requirePermission = (permission: string) => async (
   _res: Response,
   next: NextFunction,
 ): Promise<void> => {
-  if (!req.user || !(await policiesService.hasAny(req.user.roles, permission))) {
+  if (!req.user || !(await getRequestPermissions(req)).has(permission)) {
     return next(new ForbiddenError("Akses ditolak. Policy role tidak mengizinkan tindakan ini."));
   }
   next();
@@ -98,12 +109,10 @@ export const requireAnyPermission = (...permissions: string[]) => async (
   if (!req.user) {
     return next(new ForbiddenError("Akses ditolak. Policy role tidak mengizinkan tindakan ini."));
   }
-  for (const permission of permissions) {
-    if (await policiesService.hasAny(req.user.roles, permission)) {
-      return next();
-    }
-  }
-  return next(new ForbiddenError("Akses ditolak. Policy role tidak mengizinkan tindakan ini."));
+  const effectivePermissions = await getRequestPermissions(req);
+  return permissions.some((permission) => effectivePermissions.has(permission))
+    ? next()
+    : next(new ForbiddenError("Akses ditolak. Policy role tidak mengizinkan tindakan ini."));
 };
 
 /** Middleware otorisasi kondisional yang memeriksa `permission` hanya jika properti `field` dikirim di body request. */
@@ -112,7 +121,7 @@ export const requirePermissionWhenPresent = (permission: string, field: string) 
   _res: Response,
   next: NextFunction,
 ): Promise<void> => {
-  if (req.body?.[field] !== undefined && (!req.user || !(await policiesService.hasAny(req.user.roles, permission)))) {
+  if (req.body?.[field] !== undefined && (!req.user || !(await getRequestPermissions(req)).has(permission))) {
     return next(new ForbiddenError("Akses ditolak. Policy role tidak mengizinkan tindakan ini."));
   }
   next();

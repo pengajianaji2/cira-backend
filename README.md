@@ -90,6 +90,7 @@ PORT=5000
 NODE_ENV=development
 FRONTEND_URL=http://localhost:3000
 APP_PUBLIC_URL=http://localhost:3000
+TRUST_PROXY_HOPS=0
 
 # PostgreSQL Connection Strings
 DATABASE_URL="postgresql://user:password@host:6543/postgres?pgbouncer=true"
@@ -121,6 +122,7 @@ Catatan penting environment:
 - Di `production`, `FRONTEND_URL` wajib berupa origin HTTPS publik (bukan localhost), dan jika `APP_PUBLIC_URL` diisi juga wajib menggunakan HTTPS.
 - `GMAIL_USER` dan `GMAIL_APP_PASSWORD` harus diisi berpasangan (atau sama-sama dikosongkan jika fitur kirim email belum diaktifkan). Tautan undangan berlaku 24 jam (disimpan sebagai hash SHA-256), sedangkan tautan reset password berlaku 30 menit dan sekali pakai.
 - `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, dan `CLOUDINARY_API_SECRET` harus diisi bersama jika fitur unggah diaktifkan. Tidak diperlukan preset atau env Cloudinary di frontend.
+- `TRUST_PROXY_HOPS` harus mengikuti jumlah proxy yang benar-benar dipercaya pada jalur deployment. Nilai default production adalah `1` untuk satu reverse proxy; jangan mempercayai header proxy dari jaringan yang tidak tepercaya.
 
 ### 3. Instalasi Dependensi & Sinkronisasi Database
 ```bash
@@ -302,3 +304,9 @@ Format respons error:
   "error": [ ... ]
 }
 ```
+
+## Perubahan source dan deployment
+
+- Upload aset desain menggunakan signature singkat dari backend dan transfer file langsung ke Cloudinary; secret tetap di backend. Pastikan bucket/folder Cloudinary menggunakan mode authenticated.
+- Perubahan schema baru dan prosedur deploy/validasinya dijelaskan di [`docs/production-readiness-runbook.md`](docs/production-readiness-runbook.md).
+- Migrasi database tidak otomatis dijalankan saat aplikasi start. Jalankan `prisma migrate deploy` setelah backup dan pemeriksaan status data.

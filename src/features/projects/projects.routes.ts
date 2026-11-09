@@ -28,6 +28,7 @@ import { projectsController } from "./projects.controller.js";
 import {
   createProjectSchema,
   projectIdParamSchema,
+  projectListingQuerySchema,
   projectParamSchema,
   projectQuerySchema,
   updateProjectSchema,
@@ -220,6 +221,12 @@ router.patch(
   requirePermission("projects.contract.update"),
   validateRequest({ params: projectParamSchema, body: createContractSchema.pick({ contractValue: true }) }),
   asyncHandler(projectsController.updateContractValue),
+);
+
+router.get(
+  "/listing",
+  validateRequest({ query: projectListingQuerySchema }),
+  asyncHandler(projectsController.getProjectPage)
 );
 
 router.get(

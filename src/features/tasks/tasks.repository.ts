@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../config/db.config.js";
 import { CreateTaskDto, UpdateTaskDto } from "./tasks.types.js";
 
@@ -20,6 +21,9 @@ const taskIncludes = {
 };
 
 export const tasksRepository = {
+  transaction<T>(work: (tx: Prisma.TransactionClient) => Promise<T>) {
+    return prisma.$transaction(work);
+  },
   async findProjectById(projectId: string) {
     return prisma.project.findUnique({
       where: { id: projectId },
@@ -77,8 +81,8 @@ export const tasksRepository = {
     return lastTask ? lastTask.order + 1 : 0;
   },
 
-  async create(projectId: string, data: CreateTaskDto) {
-    return prisma.task.create({
+  async create(projectId: string, data: CreateTaskDto, tx?: Prisma.TransactionClient) {
+    return (tx ?? prisma).task.create({
       data: {
         projectId,
         title: data.title,
@@ -96,16 +100,16 @@ export const tasksRepository = {
     });
   },
 
-  async update(id: string, data: UpdateTaskDto) {
-    return prisma.task.update({
+  async update(id: string, data: UpdateTaskDto, tx?: Prisma.TransactionClient) {
+    return (tx ?? prisma).task.update({
       where: { id },
       data,
       include: taskIncludes,
     });
   },
 
-  async delete(id: string) {
-    return prisma.task.delete({
+  async delete(id: string, tx?: Prisma.TransactionClient) {
+    return (tx ?? prisma).task.delete({
       where: { id },
     });
   },
@@ -118,9 +122,9 @@ export const tasksRepository = {
     userId?: string;
     userName?: string;
     userRole?: string;
-    metadata?: any;
-  }) {
-    return prisma.activityLog.create({
+    metadata?: Prisma.InputJsonValue;
+  }, tx?: Prisma.TransactionClient) {
+    return (tx ?? prisma).activityLog.create({
       data: {
         projectId: data.projectId,
         category: data.category,

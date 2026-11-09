@@ -151,7 +151,8 @@ export const authService = {
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
     await authRepository.createPasswordResetToken(user.id, tokenHash, expiresAt);
     const baseUrl = (env.APP_PUBLIC_URL || env.FRONTEND_URL).replace(/\/$/, "");
-    const link = `${baseUrl}/reset-password?token=${encodeURIComponent(token)}`;
+    // Fragments are not sent in the initial HTTP request or Referer header.
+    const link = `${baseUrl}/reset-password#token=${encodeURIComponent(token)}`;
     try {
       await emailService.send(user.email, "Atur ulang password Cira PM", emailService.passwordResetHtml(link, 30), emailService.passwordResetText(link, 30));
     } catch (error) {

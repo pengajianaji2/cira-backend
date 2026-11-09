@@ -1,7 +1,11 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../config/db.config.js";
 import { CreateDesignAssetDto } from "./assets.types.js";
 
 export const assetsRepository = {
+  transaction<T>(work: (tx: Prisma.TransactionClient) => Promise<T>) {
+    return prisma.$transaction(work);
+  },
   async findProjectById(projectId: string) {
     return prisma.project.findUnique({
       where: { id: projectId },
@@ -22,22 +26,29 @@ export const assetsRepository = {
     });
   },
 
-  async create(projectId: string, data: CreateDesignAssetDto) {
-    return prisma.designAsset.create({
+  async existsStorageReference(projectId: string, publicId: string) {
+    return prisma.designAsset.findFirst({
+      where: { projectId, storageReference: { contains: publicId } },
+      select: { id: true },
+    });
+  },
+
+  async create(projectId: string, data: CreateDesignAssetDto, tx?: Prisma.TransactionClient) {
+    return (tx ?? prisma).designAsset.create({
       data: {
         projectId,
         name: data.name,
         originalSize: data.originalSize,
         compressedSize: data.compressedSize,
         compressionRatio: data.compressionRatio,
-        dataUrl: data.dataUrl,
+        storageReference: data.storageReference,
         mimeType: data.mimeType,
       },
     });
   },
 
-  async delete(id: string) {
-    return prisma.designAsset.delete({
+  async delete(id: string, tx?: Prisma.TransactionClient) {
+    return (tx ?? prisma).designAsset.delete({
       where: { id },
     });
   },
@@ -50,9 +61,9 @@ export const assetsRepository = {
     userId?: string;
     userName?: string;
     userRole?: string;
-    metadata?: any;
-  }) {
-    return prisma.activityLog.create({
+    metadata?: Prisma.InputJsonValue;
+  }, tx?: Prisma.TransactionClient) {
+    return (tx ?? prisma).activityLog.create({
       data: {
         projectId: data.projectId,
         category: data.category,
