@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../config/db.config.js";
-import { CreateDesignAssetDto } from "./assets.types.js";
+import { CreateDesignAssetRecordInput } from "./assets.types.js";
 
 export const assetsRepository = {
   transaction<T>(work: (tx: Prisma.TransactionClient) => Promise<T>) {
@@ -33,7 +33,7 @@ export const assetsRepository = {
     });
   },
 
-  async create(projectId: string, data: CreateDesignAssetDto, tx?: Prisma.TransactionClient) {
+  async create(projectId: string, data: CreateDesignAssetRecordInput, tx?: Prisma.TransactionClient) {
     return (tx ?? prisma).designAsset.create({
       data: {
         projectId,
