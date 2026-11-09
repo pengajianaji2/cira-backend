@@ -391,7 +391,7 @@ export const authService = {
       roles: u.roles,
       isActive: u.isActive,
       isPrimaryOwner: u.isPrimaryOwner,
-      avatarUrl: u.avatarUrl,
+      avatarUrl: u.avatarUrl ? cloudinaryStorage.deliveryUrl(u.avatarUrl) : null,
       createdAt: u.createdAt.toISOString(),
     }));
   },

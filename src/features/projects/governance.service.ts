@@ -19,7 +19,22 @@ import {
 } from "./governance.types.js";
 import { projectsRepository } from "./projects.repository.js";
 import { prisma } from "../../config/db.config.js";
+import { withResolvedUserAvatar } from "../assets/cloudinary.service.js";
 const gzipAsync = promisify(gzip);
+
+function serializeStatusRequest<
+  T extends {
+    votes?: Array<{ user?: { avatarUrl?: string | null } | null }>;
+  },
+>(request: T): T {
+  return {
+    ...request,
+    votes: request.votes?.map((vote) => ({
+      ...vote,
+      user: withResolvedUserAvatar(vote.user),
+    })),
+  };
+}
 
 /** Service domain tata kelola proyek: keanggotaan roster, konsensus voting 100%, arbitrase Owner, link repositori, dan arsip PRD GZIP. */
 export const governanceService = {
@@ -37,7 +52,10 @@ export const governanceService = {
     if (!project) {
       throw new NotFoundError(`Proyek dengan ID '${projectId}' tidak ditemukan.`);
     }
-    return governanceRepository.getRoster(projectId);
+    return (await governanceRepository.getRoster(projectId)).map((member) => ({
+      ...member,
+      user: withResolvedUserAvatar(member.user),
+    }));
   },
 
   /** Menambahkan anggota tim berstatus aktif ke roster voting proyek dan mencatat log audit. */
@@ -73,7 +91,7 @@ export const governanceService = {
       metadata: { targetUserId: targetUser.id, roleInProject: dto.roleInProject },
     });
 
-    return member;
+    return { ...member, user: withResolvedUserAvatar(member.user) };
   },
 
   /** Menghapus anggota dari roster voting proyek beserta pencatatan log audit. */
@@ -111,7 +129,7 @@ export const governanceService = {
     if (!project) {
       throw new NotFoundError(`Proyek dengan ID '${projectId}' tidak ditemukan.`);
     }
-    return governanceRepository.listRequests(projectId);
+    return (await governanceRepository.listRequests(projectId)).map(serializeStatusRequest);
   },
 
   async getActiveStatusRequest(projectId: string) {
@@ -119,7 +137,8 @@ export const governanceService = {
     if (!project) {
       throw new NotFoundError(`Proyek dengan ID '${projectId}' tidak ditemukan.`);
     }
-    return governanceRepository.findActivePendingRequest(projectId);
+    const activeRequest = await governanceRepository.findActivePendingRequest(projectId);
+    return activeRequest ? serializeStatusRequest(activeRequest) : null;
   },
 
   /**
@@ -173,12 +192,13 @@ export const governanceService = {
     }
 
     // Buat request dengan vote setuju otomatis untuk pemohon (AC-B2-1)
-    const request = await governanceRepository.createStatusRequestWithInitialVote(
+    const rawRequest = await governanceRepository.createStatusRequestWithInitialVote(
       projectId,
       dto,
       user.id
     );
 
+    const request = rawRequest ? serializeStatusRequest(rawRequest) : null;
     if (!request) {
       throw new BadRequestError("Gagal membuat permohonan perubahan status.");
     }
@@ -243,7 +263,8 @@ export const governanceService = {
     dto: SubmitVoteDto,
     user: AuthUserPayload
   ) {
-    const request = await governanceRepository.findRequestById(reqId);
+    const rawRequest = await governanceRepository.findRequestById(reqId);
+    const request = rawRequest ? serializeStatusRequest(rawRequest) : null;
     if (!request || request.projectId !== projectId) {
       throw new NotFoundError("Permohonan status tidak ditemukan pada proyek ini.");
     }
@@ -268,7 +289,8 @@ export const governanceService = {
     await governanceRepository.createVote(reqId, user.id, dto);
 
     // Ambil seluruh vote terkini beserta jumlah anggota roster
-    const updatedRequest = await governanceRepository.findRequestById(reqId);
+    const rawUpdatedRequest = await governanceRepository.findRequestById(reqId);
+    const updatedRequest = rawUpdatedRequest ? serializeStatusRequest(rawUpdatedRequest) : null;
     const rosterCount = await governanceRepository.countRoster(projectId);
     const votes = updatedRequest?.votes || [];
     const totalVotes = votes.length;
@@ -348,7 +370,8 @@ export const governanceService = {
     dto: OwnerFinalDecisionDto,
     user: AuthUserPayload
   ) {
-    const request = await governanceRepository.findRequestById(reqId);
+    const rawRequest = await governanceRepository.findRequestById(reqId);
+    const request = rawRequest ? serializeStatusRequest(rawRequest) : null;
     if (!request || request.projectId !== projectId) {
       throw new NotFoundError("Permohonan status tidak ditemukan pada proyek ini.");
     }
