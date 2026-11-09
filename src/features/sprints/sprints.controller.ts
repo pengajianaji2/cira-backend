@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { sendSuccess } from "../../shared/utils/responseFormatter.js";
 import { sprintsService } from "./sprints.service.js";
 
+/** HTTP controller untuk daur hidup sprint (`planning` -> `active` -> `completed`), reopening, alokasi task, dan progres kumulatif proyek. */
 export const sprintsController = {
   async getProjectSprints(req: Request, res: Response): Promise<Response> {
     const projectId = req.params.projectId as string;

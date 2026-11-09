@@ -17,6 +17,12 @@ function isFibonacci(points: number | null | undefined): boolean {
 }
 
 export const tasksService = {
+  /**
+   * Mengambil seluruh daftar task proyek (Backlog & Sprint) beserta status keterpenuhan DP untuk peringatan visual (`dpWarning`).
+   *
+   * @param projectId - ID proyek target.
+   * @throws {NotFoundError} Bila proyek tidak ditemukan.
+   */
   async getTasksByProjectId(projectId: string): Promise<ProjectTasksResult> {
     const project = await tasksRepository.findProjectById(projectId);
     if (!project) {
@@ -220,6 +226,15 @@ export const tasksService = {
     return updated;
   },
 
+  /**
+   * Memperbarui detail task termasuk pemindahan `sprintId` bila disertakan.
+   *
+   * @param id - ID task target.
+   * @param dto - Field task yang diperbarui.
+   * @param user - Identitas pengguna pelaku mutasi untuk log aktivitas.
+   * @throws {NotFoundError} Bila task tidak ditemukan.
+   * @throws {BadRequestError} Bila sprint tujuan tidak valid, berbeda proyek, atau berstatus `completed`.
+   */
   async updateTask(id: string, dto: UpdateTaskDto, user?: AuthUserPayload) {
     const existing = await tasksRepository.findById(id);
     if (!existing) {
@@ -260,6 +275,14 @@ export const tasksService = {
     return updated;
   },
 
+  /**
+   * Menghapus task secara permanen dan mencatat riwayat penghapusan ke log aktivitas proyek.
+   *
+   * @param id - ID task yang dihapus.
+   * @param user - Identitas pengguna pelaku penghapusan.
+   * @returns Snapshot task sebelum dihapus.
+   * @throws {NotFoundError} Bila task tidak ditemukan.
+   */
   async deleteTask(id: string, user?: AuthUserPayload) {
     const existing = await tasksRepository.findById(id);
     if (!existing) {

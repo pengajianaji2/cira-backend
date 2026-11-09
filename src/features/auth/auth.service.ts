@@ -37,7 +37,13 @@ const toUserResponse = (user: any): UserResponse => ({
   updatedAt: user.updatedAt instanceof Date ? user.updatedAt.toISOString() : user.updatedAt,
 });
 
+/** Service domain autentikasi, sesi JWT, aktivasi token undangan 24 jam, reset password, serta administrasi role & status anggota. */
 export const authService = {
+  /**
+   * Memverifikasi kredensial email/password pengguna aktif dan menerbitkan JWT sesi HS256 (`7d` default atau `30d` bila `rememberMe`).
+   *
+   * @throws {UnauthorizedError} Bila kredensial salah atau akun telah dinonaktifkan.
+   */
   async login(input: LoginInput): Promise<{ token: string; user: UserResponse }> {
     const user = await authRepository.findByEmail(input.email.toLowerCase());
     if (!user) {
@@ -77,6 +83,7 @@ export const authService = {
     };
   },
 
+  /** Mengambil profil pengguna terautentikasi berdasarkan ID dengan delivery URL avatar tersigned. */
   async getMe(userId: string): Promise<UserResponse> {
     const user = await authRepository.findById(userId);
     if (!user) {
@@ -135,6 +142,7 @@ export const authService = {
     }
   },
 
+  /** Membuat token reset password 30 menit sekali pakai (hash SHA-256) dan mengirim email bila akun aktif. */
   async requestPasswordReset(email: string): Promise<void> {
     const user = await authRepository.findByEmail(email.toLowerCase());
     if (!user || !user.isActive) return;
@@ -165,6 +173,14 @@ export const authService = {
 
   // === FITUR RBAC & UNDANGAN (US-1) ===
 
+  /**
+   * Membuat token undangan aktivasi 24 jam (hash SHA-256) untuk role `developer` atau `operasional`
+   * serta mengirimkannya via email; melakukan rollback undangan bila pengiriman email gagal.
+   *
+   * @throws {ForbiddenError} Bila pengundang bukan Owner.
+   * @throws {BadRequestError} Bila role target bukan `developer` atau `operasional`.
+   * @throws {ConflictError} Bila email sudah terdaftar pada akun aktif.
+   */
   async inviteUser(
     inviterId: string,
     input: InviteUserInput
@@ -240,6 +256,7 @@ export const authService = {
     };
   },
 
+  /** Mengaktifkan akun baru dari token undangan sekali pakai, menyimpan profil WhatsApp/Instagram, dan menerbitkan JWT sesi. */
   async activateUser(
     input: ActivateUserInput
   ): Promise<{ token: string; user: UserResponse }> {
@@ -292,6 +309,7 @@ export const authService = {
     };
   },
 
+  /** Memperbarui role anggota tim khusus oleh Owner (`owner+developer` untuk Owner utama, tepat 1 role untuk non-Owner). */
   async updateUserRole(
     actorId: string,
     targetUserId: string,
@@ -331,6 +349,7 @@ export const authService = {
     return toUserResponse(updated);
   },
 
+  /** Mengaktifkan atau menonaktifkan akun anggota oleh Owner (melindungi Owner utama dan akun sendiri). */
   async updateUserStatus(
     actorId: string,
     targetUserId: string,
@@ -359,6 +378,7 @@ export const authService = {
     return toUserResponse(updated);
   },
 
+  /** Mengambil daftar lengkap anggota tim beserta informasi kontak dan status aktif untuk direktori tim. */
   async getDirectory(): Promise<DirectoryUserResponse[]> {
     const users = await authRepository.getDirectoryUsers();
     return users.map((u) => ({

@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+/** Nilai bobot story points deret Fibonacci yang valid di sistem (`[1, 2, 3, 5, 8, 13]`). */
 export const FIBONACCI_VALUES = [1, 2, 3, 5, 8, 13] as const;
 
 export const fibonacciStoryPointsSchema = z
@@ -51,6 +52,7 @@ export const createSprintSchema = z
     }
   );
 
+/** Schema validasi pembaruan metadata atau rentang jadwal sprint (`startDate <= endDate`). */
 export const updateSprintSchema = z
   .object({
     name: z.string().trim().min(1, "Nama sprint tidak boleh kosong").max(100).optional(),

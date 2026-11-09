@@ -6,6 +6,7 @@ import { createCsrfToken, csrfCookieOptions } from "../../shared/middlewares/csr
 
 const COOKIE_NAME = "token";
 
+/** HTTP controller autentikasi JWT cookie, manajemen profil/password, reset password, undangan 24 jam, dan direktori tim. */
 export const authController = {
   async csrf(_req: Request, res: Response): Promise<Response> {
     const token = createCsrfToken();

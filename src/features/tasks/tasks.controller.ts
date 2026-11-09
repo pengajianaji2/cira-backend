@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { sendSuccess } from "../../shared/utils/responseFormatter.js";
 import { tasksService } from "./tasks.service.js";
 
+/** HTTP controller untuk pengelolaan task checklist (`todo`/`done`) dan perpindahan Backlog/Sprint. */
 export const tasksController = {
   async getProjectTasks(req: Request, res: Response): Promise<Response> {
     const projectId = req.params.projectId as string;

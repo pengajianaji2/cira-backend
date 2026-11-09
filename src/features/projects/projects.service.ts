@@ -29,11 +29,22 @@ Latar belakang proyek dan permasalahan utama yang dihadapi oleh klien ${clientNa
 };
 const gzipAsync = promisify(gzip);
 
+/** Service domain manajemen proyek, inisialisasi roster pembuat proyek, arsip versi PRD GZIP awal, dan nilai kontrak. */
 export const projectsService = {
+  /**
+   * Mengambil daftar proyek berdasarkan filter pencarian/status dan mengonversi `contractValue` Decimal ke number.
+   *
+   * @param filters - Filter opsional status pipeline dan kata kunci pencarian.
+   */
   async getAllProjects(filters: ProjectQueryFilter) {
     return (await projectsRepository.findMany(filters)).map((project) => ({ ...project, contractValue: Number(project.contractValue) }));
   },
 
+  /**
+   * Mengambil detail proyek beserta relasi tasks, pembayaran terformat signed URL, dan nilai kontrak numerik.
+   *
+   * @throws {NotFoundError} Bila proyek tidak ditemukan.
+   */
   async getProjectById(id: string) {
     const project = await projectsRepository.findById(id);
     if (!project) {
@@ -50,6 +61,12 @@ export const projectsService = {
     };
   },
 
+  /**
+   * Membuat proyek baru beserta keanggotaan roster awal pembuatnya dan arsip Versi #1 PRD terkompresi GZIP.
+   *
+   * @param dto - Data proyek baru (`name`, `clientName`, `clientContact`, opsional `contractValue`, `prdContent`).
+   * @param user - Pengguna pembuat proyek.
+   */
   async createProject(dto: CreateProjectDto, user?: AuthUserPayload) {
     const prdContent = dto.prdContent || generateDefaultPrdContent(dto.name, dto.clientName);
 
@@ -108,6 +125,7 @@ export const projectsService = {
     return { ...project, contractValue: Number(project.contractValue) };
   },
 
+  /** Memperbarui informasi proyek dan secara otomatis membuat arsip `PrdVersion` terkompresi GZIP bila `prdContent` berubah. */
   async updateProject(id: string, dto: UpdateProjectDto, user?: AuthUserPayload) {
     const existing = await projectsRepository.findById(id);
     if (!existing) {
@@ -174,6 +192,7 @@ export const projectsService = {
     return { ...updated, contractValue: Number(updated.contractValue) };
   },
 
+  /** Memperbarui nilai kontrak proyek (`contractValue`) secara khusus dan mencatat audit log perubahan keuangan. */
   async updateContractValue(id: string, contractValue: number, user?: AuthUserPayload) {
     const existing = await projectsRepository.findById(id);
     if (!existing) throw new NotFoundError(`Proyek dengan ID '${id}' tidak ditemukan.`);

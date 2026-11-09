@@ -21,10 +21,17 @@ import { projectsRepository } from "./projects.repository.js";
 import { prisma } from "../../config/db.config.js";
 const gzipAsync = promisify(gzip);
 
+/** Service domain tata kelola proyek: keanggotaan roster, konsensus voting 100%, arbitrase Owner, link repositori, dan arsip PRD GZIP. */
 export const governanceService = {
   // ==========================================
   // ROSTER SERVICE
   // ==========================================
+  /**
+   * Mengambil daftar anggota roster voting untuk sebuah proyek.
+   *
+   * @param projectId - ID proyek target.
+   * @throws {NotFoundError} Bila proyek tidak ditemukan.
+   */
   async getRoster(projectId: string) {
     const project = await projectsRepository.findById(projectId);
     if (!project) {
@@ -33,6 +40,7 @@ export const governanceService = {
     return governanceRepository.getRoster(projectId);
   },
 
+  /** Menambahkan anggota tim berstatus aktif ke roster voting proyek dan mencatat log audit. */
   async addRosterMember(
     projectId: string,
     dto: AddRosterMemberDto,
@@ -68,6 +76,7 @@ export const governanceService = {
     return member;
   },
 
+  /** Menghapus anggota dari roster voting proyek beserta pencatatan log audit. */
   async removeRosterMember(
     projectId: string,
     userId: string,
@@ -113,6 +122,14 @@ export const governanceService = {
     return governanceRepository.findActivePendingRequest(projectId);
   },
 
+  /**
+   * Mengajukan permohonan perubahan status proyek (`lead`, `active`, `completed`, `cancelled`) dengan
+   * vote setuju awal dari pengaju; otomatis menyetujui bila roster hanya terdiri atas 1 anggota.
+   *
+   * @throws {NotFoundError} Bila proyek tidak ditemukan.
+   * @throws {ForbiddenError} Bila pemohon bukan anggota roster maupun Owner.
+   * @throws {BadRequestError} Bila target status sama atau masih ada pengajuan berstatus pending.
+   */
   async createStatusRequest(
     projectId: string,
     dto: CreateStatusRequestDto,
@@ -219,6 +236,7 @@ export const governanceService = {
     return request;
   },
 
+  /** Mencatat suara (`approve`/`reject`) anggota roster dan menerapkan perubahan status otomatis bila tercapai konsensus 100%. */
   async submitVote(
     projectId: string,
     reqId: string,
@@ -323,6 +341,7 @@ export const governanceService = {
     return updatedRequest;
   },
 
+  /** Mengeksekusi keputusan final (arbitrase) Owner terhadap permohonan perubahan status yang masih `pending`. */
   async ownerFinalDecision(
     projectId: string,
     reqId: string,
@@ -564,6 +583,7 @@ export const governanceService = {
     }
   },
 
+  /** Menyimpan versi baru PRD dalam format biner terkompresi GZIP bila konten berubah dari versi terakhir. */
   async savePrdVersion(
     projectId: string,
     dto: SavePrdVersionDto,
@@ -642,6 +662,7 @@ export const governanceService = {
     };
   },
 
+  /** Mendekompresi arsip PRD lama dan menyimpannya sebagai versi baru di urutan teratas tanpa menimpa histori lama. */
   async restorePrdVersion(
     projectId: string,
     versionId: string,

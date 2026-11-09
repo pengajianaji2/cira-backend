@@ -143,6 +143,7 @@ export const termInputSchema = z
   })
   .superRefine((val, ctx) => validateSingleTriggerFields(val, ctx));
 
+/** Schema validasi pembaruan judul, catatan, atau pemicu tunggal termin pembayaran yang belum terkunci. */
 export const updateTermSchema = z
   .object({
     title: z.string().trim().min(1, "Judul termin tidak boleh kosong").max(255).optional(),
@@ -182,6 +183,7 @@ export const updateTermSchema = z
   });
 
 // AC-13 (AC-B4-1): Validasi total persentase seluruh termin wajib tepat 100%
+/** Schema validasi konfigurasi kontrak proyek beserta daftar termin berbobot persis 100%. */
 export const createContractSchema = z.object({
   contractValue: z.number().positive("Nilai kontrak harus lebih besar dari 0"),
   terms: z
@@ -205,6 +207,7 @@ export const uploadBastSchema = z.object({
 });
 
 // BR-TERM-05: Transisi manual planned -> ready (BAST opsional)
+/** Schema validasi penandaan termin siap ditagih (`planned` -> `ready`) dengan dokumen BAST opsional. */
 export const markTermReadySchema = z
   .object({
     bastUrl: proofFileSchema.optional(),
@@ -215,6 +218,7 @@ export const markTermReadySchema = z
   .default({});
 
 // AC-3.3 & BR-TERM-07: Pencatatan invoice manusiawi wajib mengisi invoiceDueDate (terpisah dari triggerDate)
+/** Schema validasi penerbitan invoice manual pada termin berstatus `ready` dengan `invoiceDueDate` wajib (`YYYY-MM-DD`). */
 export const issueInvoiceSchema = z.object({
   invoiceNumber: z
     .string()

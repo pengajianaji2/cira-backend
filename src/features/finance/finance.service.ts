@@ -73,6 +73,7 @@ function normalizeTriggerFields(input: {
   }
 }
 
+/** Service domain kontrak termin berbobot 100%, evaluator kesiapan otomatis WIB, penerbitan invoice manual, dan manajemen pembayaran proyek. */
 export const financeService = {
   /**
    * Membuat atau memperbarui kontrak proyek dengan termin berbobot total tepat 100%.
@@ -202,6 +203,13 @@ export const financeService = {
     };
   },
 
+  /**
+   * Mengambil seluruh termin proyek terurut setelah mengevaluasi pemicu tanggal/sprint secara idempotent di WIB.
+   *
+   * @param projectId - ID proyek target.
+   * @param now - Referensi waktu saat ini (default `new Date()`).
+   * @throws {NotFoundError} Bila proyek tidak ditemukan.
+   */
   async getProjectTerms(projectId: string, now: Date = new Date()) {
     const project = await financeRepository.findProjectById(projectId);
     if (!project) {
@@ -216,6 +224,13 @@ export const financeService = {
     );
   },
 
+  /**
+   * Mengambil detail satu termin pembayaran (`PaymentTerm`) sekaligus mengevaluasi pemicunya bila masih `planned`.
+   *
+   * @param id - ID termin pembayaran.
+   * @param now - Referensi waktu evaluasi WIB (default `new Date()`).
+   * @throws {NotFoundError} Bila termin tidak ditemukan.
+   */
   async getTermById(id: string, now: Date = new Date()) {
     const existing = await financeRepository.findTermById(id);
     if (!existing) {
@@ -591,6 +606,12 @@ export const financeService = {
     return presentTerm(updated, now);
   },
 
+  /**
+   * Menghapus termin pembayaran yang belum terkunci dan belum memiliki invoice resmi.
+   *
+   * @throws {NotFoundError} Bila termin tidak ditemukan.
+   * @throws {ConflictError} Bila termin berstatus `invoiced`, `paid`, atau `isLocked = true`.
+   */
   async deleteTerm(id: string, user?: AuthUserPayload) {
     const term = await financeRepository.findTermById(id);
     if (!term) {
@@ -782,6 +803,13 @@ export const financeService = {
     return presentPayment(existing);
   },
 
+  /**
+   * Menghitung ringkasan kas proyek (`contractValue`, `totalVerified`, `totalPending`,
+   * `remainingBalance`, `totalInvoiced`, `hasVerifiedDp`, serta jumlah pembayaran dan termin).
+   *
+   * @param projectId - ID proyek target.
+   * @throws {NotFoundError} Bila proyek tidak ditemukan.
+   */
   async getFinanceSummary(projectId: string): Promise<FinanceSummary> {
     const project = await financeRepository.findProjectById(projectId);
     if (!project) {
