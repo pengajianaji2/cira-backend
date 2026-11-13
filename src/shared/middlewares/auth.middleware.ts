@@ -33,6 +33,26 @@ declare global {
 }
 
 /**
+ * Mengekstrak token JWT dari HTTP request dengan urutan prioritas:
+ * 1. HTTP-only cookie `token` (standar sesi web)
+ * 2. Header `Authorization: Bearer <token>` (API client / bearer token)
+ * 3. Query string parameter `token` (fallback akses unduhan berkas / media)
+ */
+function extractAuthToken(req: Request): string | null {
+  if (req.cookies?.token) {
+    return req.cookies.token;
+  }
+  const authHeader = req.headers.authorization;
+  if (authHeader?.startsWith("Bearer ")) {
+    return authHeader.slice(7).trim();
+  }
+  if (typeof req.query?.token === "string" && req.query.token.trim()) {
+    return req.query.token.trim();
+  }
+  return null;
+}
+
+/**
  * Middleware autentikasi wajib berbasis JWT HS256 (HTTP-only cookie `token` atau header Bearer).
  * Memverifikasi status akun aktif dan `tokenVersion` terhadap database.
  *
@@ -43,11 +63,7 @@ export const requireAuth = async (
   _res: Response,
   next: NextFunction
 ): Promise<void> => {
-  const token =
-    req.cookies?.token ||
-    (req.headers.authorization?.startsWith("Bearer ")
-      ? req.headers.authorization.split(" ")[1]
-      : null);
+  const token = extractAuthToken(req);
 
   if (!token) {
     return next(
