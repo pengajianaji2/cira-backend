@@ -64,13 +64,6 @@ export const updateRepoTypeSchema = z.object({
   }),
 });
 
-export const savePrdVersionSchema = z.object({
-  content: z
-    .string()
-    .max(500_000, "Konten PRD tidak boleh melebihi 500.000 karakter"),
-  description: z.string().trim().max(500).optional(),
-});
-
 export const statusRequestIdParamSchema = z.object({
   projectId: z.string().min(1, "ID proyek wajib disertakan"),
   reqId: z.string().min(1, "ID permohonan status wajib disertakan"),
@@ -79,11 +72,6 @@ export const statusRequestIdParamSchema = z.object({
 export const repoIdParamSchema = z.object({
   projectId: z.string().min(1, "ID proyek wajib disertakan"),
   repoId: z.string().min(1, "ID tautan repositori wajib disertakan"),
-});
-
-export const prdVersionIdParamSchema = z.object({
-  projectId: z.string().min(1, "ID proyek wajib disertakan"),
-  versionId: z.string().min(1, "ID versi PRD wajib disertakan"),
 });
 
 export const rosterUserIdParamSchema = z.object({

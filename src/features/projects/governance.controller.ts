@@ -6,7 +6,7 @@ const getProjectId = (req: Request): string => {
   return (req.params.projectId || req.params.id) as string;
 };
 
-/** HTTP controller tata kelola proyek US-2: voting roster, pengajuan & arbitrase status, link repositori, dan versioning PRD GZIP. */
+/** HTTP controller tata kelola proyek US-2: voting roster, pengajuan & arbitrase status, link repositori, dan versioning PDF PRD. */
 export const governanceController = {
   // ==========================================
   // ROSTER CONTROLLERS
@@ -142,42 +142,5 @@ export const governanceController = {
   // ==========================================
   // PRD VERSIONING CONTROLLERS
   // ==========================================
-  async listPrdVersions(req: Request, res: Response): Promise<Response> {
-    const projectId = getProjectId(req);
-    const versions = await governanceService.listPrdVersions(projectId);
-    return sendSuccess(res, "Daftar riwayat versi PRD berhasil diambil", versions);
-  },
 
-  async getPrdVersionById(req: Request, res: Response): Promise<Response> {
-    const projectId = getProjectId(req);
-    const versionId = req.params.versionId as string;
-    const version = await governanceService.getPrdVersionById(projectId, versionId);
-    return sendSuccess(res, "Detail arsip versi PRD berhasil diambil", version);
-  },
-
-  async savePrdVersion(req: Request, res: Response): Promise<Response> {
-    const projectId = getProjectId(req);
-    const result = await governanceService.savePrdVersion(
-      projectId,
-      req.body,
-      req.user!
-    );
-    return sendSuccess(
-      res,
-      result.message,
-      result,
-      result.isNewVersion ? 201 : 200
-    );
-  },
-
-  async restorePrdVersion(req: Request, res: Response): Promise<Response> {
-    const projectId = getProjectId(req);
-    const versionId = req.params.versionId as string;
-    const result = await governanceService.restorePrdVersion(
-      projectId,
-      versionId,
-      req.user!
-    );
-    return sendSuccess(res, result.message, result, 201);
-  },
 };

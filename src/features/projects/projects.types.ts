@@ -6,7 +6,6 @@ export interface CreateProjectDto {
   clientName: string;
   clientContact: string;
   contractValue?: number;
-  prdContent?: string;
   repoType?: ProjectRepoType;
 }
 
@@ -14,7 +13,6 @@ export interface UpdateProjectDto {
   name?: string;
   clientName?: string;
   clientContact?: string;
-  prdContent?: string;
   repoType?: ProjectRepoType;
 }
 

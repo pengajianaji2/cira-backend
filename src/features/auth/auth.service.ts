@@ -21,7 +21,8 @@ import {
 } from "../../shared/errors/AppError.js";
 import { env } from "../../config/env.config.js";
 import { emailService } from "../../shared/services/email.service.js";
-import { cloudinaryStorage } from "../assets/cloudinary.service.js";
+import { filePath } from "../files/fileSecurity.js";
+import { filesService } from "../files/files.service.js";
 
 const toUserResponse = (user: any): UserResponse => ({
   id: user.id,
@@ -32,7 +33,7 @@ const toUserResponse = (user: any): UserResponse => ({
   instagram: user.instagram ?? null,
   isActive: user.isActive ?? true,
   isPrimaryOwner: user.isPrimaryOwner ?? false,
-  avatarUrl: user.avatarUrl ? cloudinaryStorage.deliveryUrl(user.avatarUrl) : null,
+  avatarUrl: filePath(user.avatarFileId),
   createdAt: user.createdAt instanceof Date ? user.createdAt.toISOString() : user.createdAt,
   updatedAt: user.updatedAt instanceof Date ? user.updatedAt.toISOString() : user.updatedAt,
 });
@@ -135,23 +136,13 @@ export const authService = {
   },
 
   /**
-   * Mengunggah foto profil hasil crop ke Cloudinary folder pengguna, membersihkan foto lama,
-   * dan melakukan rollback aset terunggah bila pembaruan database gagal.
+   * Menyelesaikan sesi upload avatar privat yang sudah diunggah melalui backend.
    *
    * @throws {NotFoundError} Bila akun pengguna tidak ditemukan.
    */
-  async uploadAvatar(userId: string, dataUrl: string): Promise<UserResponse> {
-    const user = await authRepository.findById(userId);
-    if (!user) throw new NotFoundError("Pengguna tidak ditemukan.");
-    const uploaded = await cloudinaryStorage.upload(dataUrl, `cira-pm/avatars/${userId}`);
-    try {
-      const updated = await authRepository.updateAvatar(userId, uploaded);
-      if (user.avatarUrl) await cloudinaryStorage.destroy(user.avatarUrl).catch(() => undefined);
-      return toUserResponse(updated);
-    } catch (error) {
-      await cloudinaryStorage.destroy(uploaded).catch(() => undefined);
-      throw error;
-    }
+  async uploadAvatar(user: import("../../shared/middlewares/auth.middleware.js").AuthUserPayload, uploadSessionId: string): Promise<UserResponse> {
+    await filesService.complete(uploadSessionId, user, { category: "AVATAR" });
+    return this.getMe(user.id);
   },
 
   /** Membuat token reset password 30 menit sekali pakai (hash SHA-256) dan mengirim email bila akun aktif. */
@@ -405,7 +396,7 @@ export const authService = {
       roles: u.roles,
       isActive: u.isActive,
       isPrimaryOwner: u.isPrimaryOwner,
-      avatarUrl: u.avatarUrl ? cloudinaryStorage.deliveryUrl(u.avatarUrl) : null,
+      avatarUrl: filePath(u.avatarFileId),
       createdAt: u.createdAt.toISOString(),
     }));
   },

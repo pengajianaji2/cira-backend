@@ -28,8 +28,6 @@ export interface CreateContractDto {
 }
 
 export interface UploadBastDto {
-  bastUrl?: string;
-  bastFileName?: string;
   notes?: string;
 }
 
@@ -37,7 +35,6 @@ export interface IssueInvoiceDto {
   invoiceNumber?: string;
   invoiceDueDate: string;
   notes?: string;
-  invoicePdfUrl?: string;
 }
 
 export interface PaymentTermDetail {
@@ -74,8 +71,6 @@ export interface CreatePaymentDto {
   amount: number;
   dueDate?: string;
   notes?: string;
-  proofUrl?: string;
-  proofFileName?: string;
 }
 
 export interface UpdatePaymentDto {
@@ -83,8 +78,6 @@ export interface UpdatePaymentDto {
   amount?: number;
   dueDate?: string;
   notes?: string;
-  proofUrl?: string;
-  proofFileName?: string;
 }
 
 export interface VerifyPaymentDto {

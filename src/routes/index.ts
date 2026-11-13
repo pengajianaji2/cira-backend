@@ -8,6 +8,7 @@ import paymentsRouter, { paymentTermsRouter } from "../features/finance/finance.
 import assetsRouter from "../features/assets/assets.routes.js";
 import policiesRouter from "../features/auth/policies.routes.js";
 import operationsRouter from "../features/operations/operations.routes.js";
+import filesRouter from "../features/files/files.routes.js";
 import { prisma } from "../config/db.config.js";
 
 /**
@@ -26,6 +27,7 @@ apiRouter.use("/payments", paymentsRouter);
 apiRouter.use("/payment-terms", paymentTermsRouter);
 apiRouter.use("/assets", assetsRouter);
 apiRouter.use("/operations", operationsRouter);
+apiRouter.use("/files", filesRouter);
 
 apiRouter.get("/health", (_req, res) => {
   res.json({

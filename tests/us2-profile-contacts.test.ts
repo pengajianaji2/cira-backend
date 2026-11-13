@@ -177,18 +177,15 @@ test("AC-4: profileSchema & authService.updateProfile menolak format WA/IG salah
     authRepository.updateProfile = originalUpdateProfile;
   });
 
-  // Format WhatsApp lokal (diawali 0) ditolak
+  // Nomor lokal Indonesia diterima dan dinormalisasi ke E.164.
   const localWa = profileSchema.safeParse({
     name: "Budi Santoso",
     email: "budi@cira.id",
     whatsapp: "081234567890",
     instagram: "budi_dev",
   });
-  assert.equal(localWa.success, false);
-  if (!localWa.success) {
-    assert.equal(localWa.error.issues[0].path[0], "whatsapp");
-    assert.match(localWa.error.issues[0].message, /WhatsApp/i);
-  }
+  assert.equal(localWa.success, true);
+  if (localWa.success) assert.equal(localWa.data.whatsapp, "+6281234567890");
 
   // Format Instagram berawalan '@' atau URL ditolak
   const atIg = profileSchema.safeParse({

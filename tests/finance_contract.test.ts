@@ -6,7 +6,7 @@ process.env.NODE_ENV = "test";
 
 const [
   { requireAnyRole },
-  { createContractSchema, uploadBastSchema },
+  { createContractSchema, markTermReadySchema },
   { financeService },
   { financeRepository },
 ] = await Promise.all([
@@ -159,20 +159,9 @@ test("AC-B4-1: createContract rejects modifying contract if any term is already 
 // ==============================================================
 // AC-14 (AC-B4-2): Unggah BAST & Update Status ke 'ready'
 // ==============================================================
-test("AC-B4-2: uploadBastSchema validates file URL or Base64 data URL", () => {
-  const validUrl = uploadBastSchema.parse({
-    bastUrl: "https://res.cloudinary.com/demo/image/upload/bast-sample.pdf",
-    bastFileName: "BAST-Termin-1.pdf",
-  });
-  assert.equal(validUrl.bastFileName, "BAST-Termin-1.pdf");
-
-  assert.throws(
-    () =>
-      uploadBastSchema.parse({
-        bastUrl: "not-a-valid-url-or-base64",
-      }),
-    /Bukti pembayaran harus berupa URL valid atau data image\/PDF/
-  );
+test("AC-B4-2: BAST readiness accepts notes; files must use private upload sessions", () => {
+  assert.equal(markTermReadySchema.safeParse({ notes: "BAST diverifikasi" }).success, true);
+  assert.equal(markTermReadySchema.safeParse({ bastUrl: "https://public.example/bast.pdf" }).success, false);
 });
 
 test("AC-B4-2: markTermReadyWithBast rejects if requiredCompletedSprints threshold is not met", async () => {
@@ -194,9 +183,7 @@ test("AC-B4-2: markTermReadyWithBast rejects if requiredCompletedSprints thresho
 
     await assert.rejects(
       async () =>
-        financeService.markTermReadyWithBast("term-1", {
-          bastUrl: "https://example.com/bast.pdf",
-        }),
+        financeService.markTermReadyWithBast("term-1", {}),
       /membutuhkan 2 sprint selesai \(saat ini baru 1 selesai\)/
     );
   } finally {
@@ -212,32 +199,14 @@ test("AC-B4-2: markTermReadyWithBast succeeds when BAST is uploaded and updates 
 
   try {
     financeRepository.findTermById = async () =>
-      ({
-        id: "term-1",
-        projectId: "proj-1",
-        title: "Termin 1 - DP",
-        triggerType: "manual",
-        status: "planned",
-        readyAt: null,
-      } as any);
-
+      ({ id: "term-1", projectId: "proj-1", title: "Termin 1 - DP", triggerType: "manual", status: "planned", readyAt: null } as any);
     financeRepository.markTermReadyAtomically = async (_id, data) =>
-      ({
-        id: "term-1",
-        status: "ready",
-        readyAt: data.readyAt,
-        bastUrl: data.bastUrl,
-        bastUploadedAt: data.bastUploadedAt,
-      } as any);
+      ({ id: "term-1", status: "ready", readyAt: data.readyAt } as any);
     financeRepository.logActivity = async () => ({} as any);
 
-    const updated = await financeService.markTermReadyWithBast("term-1", {
-      bastUrl: "https://example.com/bast-dp.pdf",
-      bastFileName: "BAST-DP.pdf",
-    });
-
+    const updated = await financeService.markTermReadyWithBast("term-1", {});
     assert.equal(updated.status, "ready");
-    assert.equal(updated.bastUrl, "https://example.com/bast-dp.pdf");
+    assert.equal(updated.bastUrl, null);
   } finally {
     financeRepository.findTermById = originalFindTerm;
     financeRepository.markTermReadyAtomically = originalMarkReady;

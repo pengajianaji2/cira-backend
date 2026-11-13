@@ -16,13 +16,13 @@ export const assetsRepository = {
   async findByProjectId(projectId: string) {
     return prisma.designAsset.findMany({
       where: { projectId },
-      orderBy: { createdAt: "desc" },
+      orderBy: { createdAt: "desc" }, include: { file: true },
     });
   },
 
   async findById(id: string) {
     return prisma.designAsset.findUnique({
-      where: { id },
+      where: { id }, include: { file: true },
     });
   },
 
@@ -41,7 +41,7 @@ export const assetsRepository = {
         originalSize: data.originalSize,
         compressedSize: data.compressedSize,
         compressionRatio: data.compressionRatio,
-        storageReference: data.storageReference,
+        fileId: data.fileId,
         mimeType: data.mimeType,
       },
     });

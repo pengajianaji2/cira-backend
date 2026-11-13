@@ -6,7 +6,7 @@ import {
 } from "../../shared/errors/AppError.js";
 import { AuthUserPayload } from "../../shared/middlewares/auth.middleware.js";
 import { getBusinessDateWib, isInvoiceOverdue } from "../../shared/utils/businessDate.js";
-import { cloudinaryStorage } from "../assets/cloudinary.service.js";
+import { filePath } from "../files/fileSecurity.js";
 import { financeRepository } from "./finance.repository.js";
 import { validateSingleTriggerFields } from "./finance.schema.js";
 import {
@@ -26,7 +26,8 @@ import { z } from "zod";
 const presentPayment = (payment: any) => ({
   ...payment,
   ...(payment.amount !== undefined ? { amount: Number(payment.amount) } : {}),
-  proofUrl: payment.proofUrl ? cloudinaryStorage.deliveryUrl(payment.proofUrl) : payment.proofUrl,
+  proofUrl: filePath(payment.proofFileId),
+  proofMimeType: payment.proof?.mimeType ?? null,
 });
 
 const presentTerm = (term: any, now: Date = new Date()) => ({
@@ -34,6 +35,9 @@ const presentTerm = (term: any, now: Date = new Date()) => ({
   percentage: term.percentage !== undefined ? Number(term.percentage) : term.percentage,
   amount: Number(term.amount),
   overdue: isInvoiceOverdue(term, now),
+  bastUrl: filePath(term.bastFileId),
+  invoicePdfUrl: filePath(term.invoiceFileId),
+  bastMimeType: term.bast?.mimeType ?? null,
 });
 
 function normalizeTriggerFields(input: {
@@ -368,57 +372,12 @@ export const financeService = {
       );
     }
 
-    let finalBastUrl = dto.bastUrl;
-    if (dto.bastUrl && dto.bastUrl.startsWith("data:")) {
-      try {
-        finalBastUrl = await cloudinaryStorage.upload(
-          dto.bastUrl,
-          `cira-pm/projects/${term.projectId}/bast`
-        );
-      } catch {
-        throw new ServiceUnavailableError(
-          "Dokumen tidak tersimpan karena layanan upload sedang tidak tersedia. Coba kembali."
-        );
-      }
-    }
-
-    // Jika termin sudah berstatus 'ready', pertahankan readyAt (idempotent) dan hanya simpan BAST bila diunggah
+    // Jika termin sudah berstatus 'ready', pertahankan readyAt (idempotent).
     if (term.status === "ready") {
-      if (!finalBastUrl && !dto.notes) {
-        return presentTerm(term, now);
-      }
-
+      if (dto.notes === undefined) return presentTerm(term, now);
       const updatedExisting = await financeRepository.updateTerm(id, {
-        ...(finalBastUrl
-          ? {
-              bastUrl: finalBastUrl,
-              bastFileName: dto.bastFileName ?? term.bastFileName ?? null,
-              bastUploadedAt: now,
-            }
-          : {}),
-        ...(dto.notes !== undefined
-          ? { notes: dto.notes ? `${term.notes || ""}\n${dto.notes}`.trim() : term.notes }
-          : {}),
+        notes: dto.notes ? `${term.notes || ""}\n${dto.notes}`.trim() : term.notes,
       });
-
-      if (finalBastUrl) {
-        await financeRepository.logActivity({
-          projectId: term.projectId,
-          category: "finance",
-          action: "BAST_UPLOAD",
-          description: `Dokumen BAST untuk "${term.title}" diunggah pada termin yang sudah siap ditagih.`,
-          userId: user?.id,
-          userName: user?.name,
-          userRole: user?.roles?.[0],
-          metadata: {
-            termId: id,
-            title: term.title,
-            status: "ready",
-            bastFileName: dto.bastFileName,
-          },
-        });
-      }
-
       return presentTerm(updatedExisting, now);
     }
 
@@ -450,13 +409,6 @@ export const financeService = {
 
     const updated = await financeRepository.markTermReadyAtomically(id, {
       readyAt: term.readyAt ?? now,
-      ...(finalBastUrl
-        ? {
-            bastUrl: finalBastUrl,
-            bastFileName: dto.bastFileName || null,
-            bastUploadedAt: now,
-          }
-        : {}),
       ...(dto.notes !== undefined
         ? { notes: dto.notes ? `${term.notes || ""}\n${dto.notes}`.trim() : term.notes }
         : {}),
@@ -470,10 +422,8 @@ export const financeService = {
     await financeRepository.logActivity({
       projectId: term.projectId,
       category: "finance",
-      action: finalBastUrl ? "BAST_UPLOAD" : "TERM_READY",
-      description: finalBastUrl
-        ? `Dokumen BAST untuk "${term.title}" diunggah. Status termin kini Siap ditagih.`
-        : `Termin "${term.title}" ditandai Siap ditagih oleh ${user?.name || "Pengguna berizin"}.`,
+      action: "TERM_READY",
+      description: `Termin "${term.title}" ditandai Siap ditagih oleh ${user?.name || "Pengguna berizin"}.`,
       userId: user?.id,
       userName: user?.name,
       userRole: user?.roles?.[0],
@@ -482,7 +432,6 @@ export const financeService = {
         title: term.title,
         status: "ready",
         readyAt: updated.readyAt,
-        ...(dto.bastFileName ? { bastFileName: dto.bastFileName } : {}),
       },
     });
 
@@ -529,7 +478,7 @@ export const financeService = {
       invoiceIssuedAt: now,
       status: "invoiced",
       isLocked: true,
-      invoicePdfUrl: dto.invoicePdfUrl || term.invoicePdfUrl || null,
+      invoiceFileId: term.invoiceFileId,
       notes: dto.notes ? `${term.notes || ""}\n${dto.notes}`.trim() : term.notes,
     });
 
@@ -659,16 +608,7 @@ export const financeService = {
       throw new NotFoundError(`Proyek dengan ID '${projectId}' tidak ditemukan.`);
     }
 
-    const storedDto = dto.proofUrl?.startsWith("data:")
-      ? {
-          ...dto,
-          proofUrl: await cloudinaryStorage.upload(
-            dto.proofUrl,
-            `cira-pm/projects/${projectId}/proofs`
-          ),
-        }
-      : dto;
-    const payment = await financeRepository.create(projectId, storedDto);
+    const payment = await financeRepository.create(projectId, dto);
 
     await financeRepository.logActivity({
       projectId,
@@ -741,17 +681,7 @@ export const financeService = {
       throw new NotFoundError(`Termin pembayaran dengan ID '${id}' tidak ditemukan.`);
     }
 
-    const nextProof = dto.proofUrl?.startsWith("data:")
-      ? await cloudinaryStorage.upload(
-          dto.proofUrl,
-          `cira-pm/projects/${existing.projectId}/proofs`
-        )
-      : dto.proofUrl;
-    const updateData: any = { ...dto, ...(nextProof ? { proofUrl: nextProof } : {}) };
-    if (nextProof && nextProof !== existing.proofUrl) {
-      updateData.proofUploadedAt = new Date();
-    }
-
+    const updateData: any = { ...dto };
     const updated = await financeRepository.update(id, updateData);
 
     await financeRepository.logActivity({
@@ -768,9 +698,6 @@ export const financeService = {
       },
     });
 
-    if (nextProof && existing.proofUrl && nextProof !== existing.proofUrl) {
-      await cloudinaryStorage.destroy(existing.proofUrl);
-    }
     return presentPayment(updated);
   },
 
@@ -780,7 +707,6 @@ export const financeService = {
       throw new NotFoundError(`Termin pembayaran dengan ID '${id}' tidak ditemukan.`);
     }
 
-    await cloudinaryStorage.destroy(existing.proofUrl || "");
     await financeRepository.delete(id);
 
     await financeRepository.logActivity({

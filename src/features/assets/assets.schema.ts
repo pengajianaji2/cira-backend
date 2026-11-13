@@ -1,12 +1,8 @@
 import { z } from "zod";
 
 export const createDesignAssetSchema = z.object({
-  name: z.string().trim().min(1, "Nama aset wajib diisi").max(255),
-  originalSize: z.number().int().positive("originalSize harus berupa integer positif"),
-  publicId: z.string().uuid(),
-  compressionRatio: z.number().int().min(0).max(100, "Rasio kompresi berkisar antara 0 - 100"),
-  mimeType: z.enum(["image/png", "image/jpeg", "image/webp"]),
-});
+  uploadSessionId: z.string().uuid(),
+}).strict();
 
 export const createAssetUploadSchema = z.object({
   name: z.string().trim().min(1).max(255),

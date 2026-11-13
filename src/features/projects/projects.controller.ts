@@ -21,7 +21,7 @@ export const projectsController = {
 
   async getProjectById(req: Request, res: Response): Promise<Response> {
     const id = req.params.id as string;
-    const project = await projectsService.getProjectById(id);
+    const project = await projectsService.getProjectById(id,req.user!);
     return sendSuccess(res, "Detail proyek berhasil diambil", project);
   },
 

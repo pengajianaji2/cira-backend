@@ -1,5 +1,3 @@
-import { gzip, gunzipSync } from "node:zlib";
-import { promisify } from "node:util";
 import {
   BadRequestError,
   ForbiddenError,
@@ -15,28 +13,16 @@ import {
   ProjectRepoType,
   SubmitVoteDto,
   UpdateRepoLinkDto,
-  SavePrdVersionDto,
 } from "./governance.types.js";
 import { projectsRepository } from "./projects.repository.js";
 import { prisma } from "../../config/db.config.js";
-import { withResolvedUserAvatar } from "../assets/cloudinary.service.js";
-const gzipAsync = promisify(gzip);
+import { withResolvedUserAvatar } from "../files/fileSecurity.js";
 
-function serializeStatusRequest<
-  T extends {
-    votes?: Array<{ user?: { avatarUrl?: string | null } | null }>;
-  },
->(request: T): T {
-  return {
-    ...request,
-    votes: request.votes?.map((vote) => ({
-      ...vote,
-      user: withResolvedUserAvatar(vote.user),
-    })),
-  };
+function serializeStatusRequest<T extends { votes?: any[] }>(request: T): any {
+  return { ...request, votes: request.votes?.map((vote) => ({ ...vote, user: withResolvedUserAvatar(vote.user) })) };
 }
 
-/** Service domain tata kelola proyek: keanggotaan roster, konsensus voting 100%, arbitrase Owner, link repositori, dan arsip PRD GZIP. */
+/** Service domain tata kelola proyek: keanggotaan roster, konsensus voting 100%, arbitrase Owner, link repositori, dan arsip PDF PRD. */
 export const governanceService = {
   // ==========================================
   // ROSTER SERVICE
@@ -294,8 +280,8 @@ export const governanceService = {
     const rosterCount = await governanceRepository.countRoster(projectId);
     const votes = updatedRequest?.votes || [];
     const totalVotes = votes.length;
-    const approveCount = votes.filter((v) => v.vote === "approve").length;
-    const rejectCount = votes.filter((v) => v.vote === "reject").length;
+    const approveCount = votes.filter((v: any) => v.vote === "approve").length;
+    const rejectCount = votes.filter((v: any) => v.vote === "reject").length;
 
     // AC-B2-2: Jika SELURUH anggota roster telah vote dan 100% "approve"
     if (totalVotes >= rosterCount && approveCount === rosterCount) {
@@ -385,7 +371,7 @@ export const governanceService = {
     if (dto.decision === "approve") {
       await governanceRepository.resolveStatusRequest(reqId, "approved", {
         finalDecisionById: user.id,
-        finalDecision: "approve",
+        finalDecision: "approved",
         finalReason: dto.reason,
         finalDecisionAt: now,
       });
@@ -411,7 +397,7 @@ export const governanceService = {
       return {
         ...request,
         status: "approved",
-        finalDecision: "approve",
+        finalDecision: "approved",
         finalDecisionBy: { id: user.id, name: user.name, email: user.email },
         finalReason: dto.reason,
         finalDecisionAt: now,
@@ -420,7 +406,7 @@ export const governanceService = {
     } else {
       await governanceRepository.resolveStatusRequest(reqId, "rejected", {
         finalDecisionById: user.id,
-        finalDecision: "reject",
+        finalDecision: "rejected",
         finalReason: dto.reason,
         finalDecisionAt: now,
       });
@@ -443,7 +429,7 @@ export const governanceService = {
       return {
         ...request,
         status: "rejected",
-        finalDecision: "reject",
+        finalDecision: "rejected",
         finalDecisionBy: { id: user.id, name: user.name, email: user.email },
         finalReason: dto.reason,
         finalDecisionAt: now,
@@ -572,186 +558,4 @@ export const governanceService = {
     return updated;
   },
 
-  // ==========================================
-  // PRD VERSIONING SERVICE (GZIP via node:zlib)
-  // ==========================================
-  async listPrdVersions(projectId: string) {
-    const project = await projectsRepository.findById(projectId);
-    if (!project) {
-      throw new NotFoundError(`Proyek dengan ID '${projectId}' tidak ditemukan.`);
-    }
-    return governanceRepository.listPrdVersions(projectId);
-  },
-
-  async getPrdVersionById(projectId: string, versionId: string) {
-    const version = await governanceRepository.findPrdVersionById(versionId);
-    if (!version || version.projectId !== projectId) {
-      throw new NotFoundError("Versi PRD tidak ditemukan pada proyek ini.");
-    }
-
-    try {
-      const decompressed = gunzipSync(version.compressedContent).toString("utf-8");
-      return {
-        id: version.id,
-        projectId: version.projectId,
-        versionNumber: version.versionNumber,
-        charCount: version.charCount,
-        description: version.description,
-        createdAt: version.createdAt,
-        createdBy: version.createdBy,
-        content: decompressed,
-      };
-    } catch {
-      throw new BadRequestError("Gagal mendekompresi konten arsip PRD.");
-    }
-  },
-
-  /** Menyimpan versi baru PRD dalam format biner terkompresi GZIP bila konten berubah dari versi terakhir. */
-  async savePrdVersion(
-    projectId: string,
-    dto: SavePrdVersionDto,
-    user: AuthUserPayload
-  ) {
-    const project = await projectsRepository.findById(projectId);
-    if (!project) {
-      throw new NotFoundError(`Proyek dengan ID '${projectId}' tidak ditemukan.`);
-    }
-
-    const latest = await governanceRepository.findLatestPrdVersion(projectId);
-
-    // AC-B2-4: Cek apakah konten berbeda dari versi terakhir
-    if (latest) {
-      try {
-        const latestContent = gunzipSync(latest.compressedContent).toString("utf-8");
-        if (latestContent === dto.content) {
-          return {
-            id: latest.id,
-            versionNumber: latest.versionNumber,
-            charCount: latest.charCount,
-            description: latest.description,
-            createdAt: latest.createdAt,
-            content: latestContent,
-            isNewVersion: false,
-            message: "Konten PRD tidak mengalami perubahan dari versi terakhir.",
-          };
-        }
-      } catch {
-        // Jika pembacaan versi lama gagal, lanjutkan pembuatan versi baru
-      }
-    }
-
-    // Kompresi konten baru menggunakan zlib.gzipSync
-    const compressed = await gzipAsync(Buffer.from(dto.content, "utf-8"));
-    const uint8Content = new Uint8Array(compressed.buffer, compressed.byteOffset, compressed.byteLength) as Uint8Array<ArrayBuffer>;
-    const nextVersionNumber = (latest?.versionNumber ?? 0) + 1;
-
-    const created = await governanceRepository.createPrdVersion({
-      projectId,
-      versionNumber: nextVersionNumber,
-      compressedContent: uint8Content,
-      charCount: dto.content.length,
-      description: dto.description || `Versi #${nextVersionNumber}`,
-      createdById: user.id,
-    });
-
-    // Update project.prdContent
-    await governanceRepository.updateProjectPrdContent(projectId, dto.content);
-
-    await governanceRepository.logActivity({
-      projectId,
-      category: "project",
-      action: "PRD_VERSION_CREATED",
-      description: `Versi PRD #${nextVersionNumber} berhasil disimpan (${dto.content.length} karakter).`,
-      userId: user.id,
-      userName: user.name,
-      userRole: user.roles?.[0],
-      metadata: {
-        versionNumber: nextVersionNumber,
-        charCount: dto.content.length,
-        compressedSize: compressed.length,
-      },
-    });
-
-    return {
-      id: created.id,
-      versionNumber: created.versionNumber,
-      charCount: created.charCount,
-      description: created.description,
-      createdAt: created.createdAt,
-      createdBy: created.createdBy,
-      content: dto.content,
-      isNewVersion: true,
-      message: `Versi PRD #${nextVersionNumber} berhasil disimpan.`,
-    };
-  },
-
-  /** Mendekompresi arsip PRD lama dan menyimpannya sebagai versi baru di urutan teratas tanpa menimpa histori lama. */
-  async restorePrdVersion(
-    projectId: string,
-    versionId: string,
-    user: AuthUserPayload
-  ) {
-    const project = await projectsRepository.findById(projectId);
-    if (!project) {
-      throw new NotFoundError(`Proyek dengan ID '${projectId}' tidak ditemukan.`);
-    }
-
-    const targetVersion = await governanceRepository.findPrdVersionById(versionId);
-    if (!targetVersion || targetVersion.projectId !== projectId) {
-      throw new NotFoundError("Versi PRD yang akan dipulihkan tidak ditemukan.");
-    }
-
-    let targetContent: string;
-    try {
-      targetContent = gunzipSync(targetVersion.compressedContent).toString("utf-8");
-    } catch {
-      throw new BadRequestError("Gagal mendekompresi konten versi PRD asal.");
-    }
-
-    const latest = await governanceRepository.findLatestPrdVersion(projectId);
-    const nextVersionNumber = (latest?.versionNumber ?? 0) + 1;
-
-    // AC-B2-4: When endpoint restore dipanggil, versi lama didekompresi dan disimpan sebagai versi baru di urutan teratas tanpa menimpa versi sebelumnya
-    const compressed = await gzipAsync(Buffer.from(targetContent, "utf-8"));
-    const uint8Content = new Uint8Array(compressed.buffer, compressed.byteOffset, compressed.byteLength) as Uint8Array<ArrayBuffer>;
-
-    const restoredVersion = await governanceRepository.createPrdVersion({
-      projectId,
-      versionNumber: nextVersionNumber,
-      compressedContent: uint8Content,
-      charCount: targetContent.length,
-      description: `Dipulihkan dari Versi #${targetVersion.versionNumber}`,
-      createdById: user.id,
-    });
-
-    // Perbarui teks PRD aktif di project
-    await governanceRepository.updateProjectPrdContent(projectId, targetContent);
-
-    await governanceRepository.logActivity({
-      projectId,
-      category: "project",
-      action: "PRD_VERSION_RESTORED",
-      description: `Konten PRD dipulihkan dari Versi #${targetVersion.versionNumber} menjadi Versi #${nextVersionNumber}.`,
-      userId: user.id,
-      userName: user.name,
-      userRole: user.roles?.[0],
-      metadata: {
-        sourceVersionNumber: targetVersion.versionNumber,
-        newVersionNumber: nextVersionNumber,
-        charCount: targetContent.length,
-      },
-    });
-
-    return {
-      id: restoredVersion.id,
-      versionNumber: restoredVersion.versionNumber,
-      charCount: restoredVersion.charCount,
-      description: restoredVersion.description,
-      createdAt: restoredVersion.createdAt,
-      createdBy: restoredVersion.createdBy,
-      content: targetContent,
-      isNewVersion: true,
-      message: `Konten PRD berhasil dipulihkan dari Versi #${targetVersion.versionNumber} menjadi Versi #${nextVersionNumber}.`,
-    };
-  },
 };

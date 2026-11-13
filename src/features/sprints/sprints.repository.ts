@@ -33,7 +33,7 @@ export const sprintsRepository = {
                 id: true,
                 name: true,
                 email: true,
-                avatarUrl: true,
+                avatarFileId: true,
               },
             },
           },
@@ -55,7 +55,7 @@ export const sprintsRepository = {
                 id: true,
                 name: true,
                 email: true,
-                avatarUrl: true,
+                avatarFileId: true,
               },
             },
           },
@@ -112,7 +112,7 @@ export const sprintsRepository = {
                 id: true,
                 name: true,
                 email: true,
-                avatarUrl: true,
+                avatarFileId: true,
               },
             },
           },
@@ -127,7 +127,7 @@ export const sprintsRepository = {
    */
   async startSprintAtomically(id: string, projectId: string, startDate: Date, endDate: Date) {
     return prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`sprint-start-${projectId}`}))`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`sprint-start-${projectId}`}))`;
       const active = await tx.sprint.findFirst({ where: { projectId, status: "active" }, select: { id: true } });
       if (active && active.id !== id) return null;
       const changed = await tx.sprint.updateMany({
@@ -155,7 +155,7 @@ export const sprintsRepository = {
     actor?: { id?: string; name?: string; role?: string }
   ) {
     return prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`sprint-close-${projectId}`}))`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`sprint-close-${projectId}`}))`;
 
       // 1. Ambil sprint
       const sprint = await tx.sprint.findUnique({

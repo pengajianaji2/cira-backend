@@ -1,6 +1,8 @@
 import { z } from "zod";
+import { parsePhoneNumberFromString } from "libphonenumber-js";
 
-const WHATSAPP_REGEX = /^\+?[1-9]\d{6,14}$/;
+const e164 = z.string().refine(value=>{const parsed=parsePhoneNumberFromString(value);return Boolean(parsed?.isValid()&&parsed.number===value);},"Nomor telepon tidak valid. Pilih negara dan masukkan nomor yang benar.");
+const normalizePhone=(value:unknown)=>{if(typeof value!=='string')return value;const raw=value.trim();if(!raw)return null;const parsed=parsePhoneNumberFromString(raw,raw.startsWith('+')?undefined:'ID');return parsed?.isValid()?parsed.number:raw;};
 const INSTAGRAM_REGEX = /^[a-zA-Z0-9._]+$/;
 
 const normalizeOptionalContact = (value: unknown) => {
@@ -23,13 +25,8 @@ export const profileSchema = z.object({
   name: z.string().trim().min(2, "Nama minimal 2 karakter."),
   email: z.string().trim().email("Format email tidak valid."),
   whatsapp: z.preprocess(
-    normalizeOptionalContact,
-    z
-      .string()
-      .regex(
-        WHATSAPP_REGEX,
-        "Nomor WhatsApp harus format internasional valid (misal: +6281234567890)."
-      )
+    normalizePhone,
+    e164
       .nullable()
       .optional()
   ),
@@ -59,7 +56,7 @@ export const inviteUserSchema = z.object({
 export const activateUserSchema = z.object({
   token: z.string().min(1, "Token aktivasi wajib disertakan."),
   name: z.string().min(2, "Nama minimal 2 karakter."),
-  whatsapp: z.string().regex(/^\+?[1-9]\d{6,14}$/, "Nomor WhatsApp harus berformat internasional valid (contoh: +6281234567890)."),
+  whatsapp: z.preprocess(normalizePhone,e164),
   instagram: z.string().min(1, "Username Instagram wajib diisi.").regex(/^[a-zA-Z0-9._]+$/, "Username Instagram hanya boleh berisi huruf, angka, titik, dan garis bawah (tanpa @ atau URL)."),
   password: z.string().min(8, "Password minimal 8 karakter.").refine((value) => Buffer.byteLength(value, "utf8") <= 72, "Password terlalu panjang."),
   confirmPassword: z.string().optional(),
@@ -79,6 +76,6 @@ export const resetPasswordSchema = z.object({
   newPassword: z.string().min(8).refine((value) => Buffer.byteLength(value, "utf8") <= 72, "Password terlalu panjang."),
 });
 export const avatarSchema = z.object({
-  dataUrl: z.string().max(2_700_000).regex(/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/),
+  uploadSessionId: z.string().uuid(),
 });
 export const verifyInvitationSchema = z.object({ token: z.string().min(32).max(256) });

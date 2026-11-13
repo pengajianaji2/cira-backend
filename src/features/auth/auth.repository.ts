@@ -34,8 +34,8 @@ export const authRepository = {
     return prisma.user.update({ where: { id }, data: { tokenVersion: { increment: 1 } } });
   },
 
-  async updateAvatar(id: string, avatarUrl: string | null) {
-    return prisma.user.update({ where: { id }, data: { avatarUrl } });
+  async updateAvatar(id: string, avatarFileId: string | null) {
+    return prisma.user.update({ where: { id }, data: { avatarFileId } });
   },
 
   async createUser(data: {
@@ -47,7 +47,7 @@ export const authRepository = {
     instagram?: string;
     isActive?: boolean;
     isPrimaryOwner?: boolean;
-    avatarUrl?: string;
+    avatarFileId?: string;
   }) {
     return prisma.user.create({
       data: {
@@ -188,7 +188,7 @@ export const authRepository = {
         roles: true,
         isActive: true,
         isPrimaryOwner: true,
-        avatarUrl: true,
+        avatarFileId: true,
         createdAt: true,
       },
       orderBy: [

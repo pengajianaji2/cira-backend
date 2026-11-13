@@ -5,13 +5,9 @@ import { getBusinessDateWib } from "../../shared/utils/businessDate.js";
 import { CreatePaymentDto } from "./finance.types.js";
 
 const termIncludes = {
-  triggerSprint: {
-    select: {
-      id: true,
-      name: true,
-      status: true,
-    },
-  },
+  triggerSprint: { select: { id: true, name: true, status: true } },
+  bast: { select: { mimeType: true } },
+  invoiceFile: { select: { mimeType: true } },
 };
 
 export interface TermEvaluationActor {
@@ -243,9 +239,6 @@ export const financeRepository = {
     id: string,
     data: {
       readyAt: Date;
-      bastUrl?: string | null;
-      bastFileName?: string | null;
-      bastUploadedAt?: Date | null;
       notes?: string | null;
     }
   ) {
@@ -255,9 +248,6 @@ export const financeRepository = {
         data: {
           status: "ready",
           readyAt: data.readyAt,
-          ...(data.bastUrl !== undefined ? { bastUrl: data.bastUrl } : {}),
-          ...(data.bastFileName !== undefined ? { bastFileName: data.bastFileName } : {}),
-          ...(data.bastUploadedAt !== undefined ? { bastUploadedAt: data.bastUploadedAt } : {}),
           ...(data.notes !== undefined ? { notes: data.notes } : {}),
         },
       });
@@ -307,12 +297,12 @@ export const financeRepository = {
       invoiceIssuedAt: Date;
       status: string;
       isLocked: boolean;
-      invoicePdfUrl: string | null;
+      invoiceFileId: string | null;
       notes: string | null;
     }
   ) {
     return prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`cira-invoice-${year}`}))`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`cira-invoice-${year}`}))`;
 
       let finalInvoiceNumber = data.invoiceNumber?.trim();
       if (finalInvoiceNumber) {
@@ -349,7 +339,7 @@ export const financeRepository = {
           isLocked: data.isLocked,
           invoiceIssuedAt: data.invoiceIssuedAt,
           invoiceDueDate: data.invoiceDueDate,
-          invoicePdfUrl: data.invoicePdfUrl,
+          invoiceFileId: data.invoiceFileId,
           notes: data.notes,
           invoiceNumber: finalInvoiceNumber,
         },
@@ -367,13 +357,8 @@ export const financeRepository = {
       where: { projectId },
       orderBy: { createdAt: "desc" },
       include: {
-        verifiedBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
+        verifiedBy: { select: { id: true, name: true, email: true } },
+        proof: { select: { mimeType: true } },
       },
     });
   },
@@ -391,18 +376,7 @@ export const financeRepository = {
   },
 
   async findById(id: string) {
-    return prisma.payment.findUnique({
-      where: { id },
-      include: {
-        verifiedBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
-      },
-    });
+    return prisma.payment.findUnique({ where: { id }, include: { verifiedBy: { select: { id: true, name: true, email: true } }, proof: { select: { mimeType: true } } } });
   },
 
   async create(projectId: string, data: CreatePaymentDto) {
@@ -413,9 +387,8 @@ export const financeRepository = {
         amount: data.amount,
         dueDate: data.dueDate,
         notes: data.notes,
-        proofUrl: data.proofUrl,
-        proofFileName: data.proofFileName,
-        proofUploadedAt: data.proofUrl ? new Date() : null,
+        proofFileId: null,
+        proofUploadedAt: null,
         status: "pending",
       },
     });

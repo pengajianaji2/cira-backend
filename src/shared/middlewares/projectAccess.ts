@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { prisma } from "../../config/db.config.js";
-import { NotFoundError } from "../errors/AppError.js";
+import { NotFoundError, ConflictError } from "../errors/AppError.js";
+import { acquireResourceLock } from "../services/resourceLock.js";
 
 type ProjectResource = "task" | "sprint" | "payment" | "paymentTerm" | "asset";
 
@@ -27,7 +28,7 @@ async function findProjectIdForResource(resource: ProjectResource, id: string): 
   }
 }
 
-async function assertProjectAccess(req: Request, projectId: string): Promise<void> {
+async function assertProjectAccess(req: Request, projectId: string, allowDeleting = false): Promise<void> {
   const user = req.user;
   if (!user) throw new NotFoundError("Proyek tidak ditemukan.");
   const roles = user.roles.map(normalizeRole);
@@ -37,21 +38,27 @@ async function assertProjectAccess(req: Request, projectId: string): Promise<voi
       id: projectId,
       ...(isOrganizationWide ? {} : { roster: { some: { userId: user.id } } }),
     },
-    select: { id: true },
+    select: { id: true, deletionState: true },
   });
   if (!project) throw new NotFoundError("Proyek tidak ditemukan.");
+  if(project.deletionState && !allowDeleting) throw new ConflictError("Proyek sedang dalam proses penghapusan.");
 }
 
 /** Developers can access only projects in their roster; owner and operational roles have organization-wide access. */
-export const requireProjectAccess = (paramName = "projectId") => async (
+export const requireProjectAccess = (paramName = "projectId", allowDeleting = false) => async (
   req: Request,
-  _res: Response,
+  res: Response,
   next: NextFunction,
 ): Promise<void> => {
   try {
     const projectId = routeParam(req, paramName);
     if (!projectId) throw new NotFoundError("Proyek tidak ditemukan.");
-    await assertProjectAccess(req, projectId);
+    if(!["GET","HEAD","OPTIONS"].includes(req.method)) {
+      const release=await acquireResourceLock(`project:${projectId}`);
+      let released=false;const unlock=()=>{if(released)return;released=true;void release();};
+      res.once("finish",unlock);res.once("close",unlock);
+      await assertProjectAccess(req,projectId,allowDeleting);
+    } else await assertProjectAccess(req, projectId, allowDeleting);
     next();
   } catch (error) {
     next(error);
@@ -59,9 +66,9 @@ export const requireProjectAccess = (paramName = "projectId") => async (
 };
 
 /** Resolves an ID-addressed record to its project and applies the same roster scope. */
-export const requireProjectResourceAccess = (resource: ProjectResource, paramName = "id") => async (
+export const requireProjectResourceAccess = (resource: ProjectResource, paramName = "id", allowDeleting = false) => async (
   req: Request,
-  _res: Response,
+  res: Response,
   next: NextFunction,
 ): Promise<void> => {
   try {
@@ -69,7 +76,12 @@ export const requireProjectResourceAccess = (resource: ProjectResource, paramNam
     if (!resourceId) throw new NotFoundError("Data tidak ditemukan.");
     const projectId = await findProjectIdForResource(resource, resourceId);
     if (!projectId) throw new NotFoundError("Data tidak ditemukan.");
-    await assertProjectAccess(req, projectId);
+    if(!["GET","HEAD","OPTIONS"].includes(req.method)) {
+      const release=await acquireResourceLock(`project:${projectId}`);
+      let released=false;const unlock=()=>{if(released)return;released=true;void release();};
+      res.once("finish",unlock);res.once("close",unlock);
+      await assertProjectAccess(req,projectId,allowDeleting);
+    } else await assertProjectAccess(req, projectId, allowDeleting);
     next();
   } catch (error) {
     next(error);

@@ -29,9 +29,16 @@ const envSchema = z.object({
   JWT_EXPIRES_IN: z.string().default("7d"),
   SEED_ADMIN_EMAIL: z.string().email().optional(),
   SEED_ADMIN_PASSWORD: z.string().min(6).optional(),
-  CLOUDINARY_CLOUD_NAME: z.string().optional(),
-  CLOUDINARY_API_KEY: z.string().optional(),
-  CLOUDINARY_API_SECRET: z.string().optional(),
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  GOOGLE_REFRESH_TOKEN: z.string().optional(),
+  GOOGLE_DRIVE_FOLDER_ID: z.string().optional(),
+  FILE_SESSION_ENCRYPTION_KEY: z.string().regex(/^[a-f0-9]{64}$/i).optional(),
+  FILE_UPLOAD_MAX_AVATAR_BYTES: z.coerce.number().int().positive().max(5242880).default(5242880),
+  FILE_UPLOAD_MAX_DESIGN_BYTES: z.coerce.number().int().positive().max(2097152).default(2097152),
+  FILE_UPLOAD_MAX_DOCUMENT_BYTES: z.coerce.number().int().positive().max(26214400).default(26214400),
+  FILE_UPLOAD_CHUNK_BYTES: z.coerce.number().int().positive().max(4194304).multipleOf(262144).default(4194304),
+
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -60,10 +67,6 @@ if (Boolean(env.GMAIL_USER) !== Boolean(env.GMAIL_APP_PASSWORD)) {
   throw new Error("GMAIL_USER dan GMAIL_APP_PASSWORD harus diisi bersama.");
 }
 
-const cloudinaryValues = [env.CLOUDINARY_CLOUD_NAME, env.CLOUDINARY_API_KEY, env.CLOUDINARY_API_SECRET];
-if (cloudinaryValues.some(Boolean) && !cloudinaryValues.every(Boolean)) {
-  throw new Error("CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, dan CLOUDINARY_API_SECRET harus diisi bersama.");
-}
 
 if (env.NODE_ENV === "production") {
   const frontendOrigin = new URL(env.FRONTEND_URL);

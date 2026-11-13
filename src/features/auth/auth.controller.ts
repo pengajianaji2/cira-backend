@@ -60,7 +60,7 @@ export const authController = {
   },
 
   async uploadAvatar(req: Request, res: Response): Promise<Response> {
-    const user = await authService.uploadAvatar(req.user!.id, req.body.dataUrl);
+    const user = await authService.uploadAvatar(req.user!, req.body.uploadSessionId);
     return sendSuccess(res, "Foto profil berhasil diperbarui.", { user });
   },
 

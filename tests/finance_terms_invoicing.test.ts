@@ -62,6 +62,7 @@ function createFakeTx(state: {
 }) {
   return {
     $queryRaw: async () => [],
+    $executeRaw: async () => 0,
     sprint: {
       count: async ({ where }: any) => {
         return state.sprints.filter((s) => {

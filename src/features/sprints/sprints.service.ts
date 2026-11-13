@@ -1,7 +1,7 @@
 import { BadRequestError, ForbiddenError, NotFoundError } from "../../shared/errors/AppError.js";
 import { AuthUserPayload } from "../../shared/middlewares/auth.middleware.js";
 import { sprintsRepository } from "./sprints.repository.js";
-import { withResolvedUserAvatar } from "../assets/cloudinary.service.js";
+import { withResolvedUserAvatar } from "../files/fileSecurity.js";
 import {
   AssignTasksToSprintDto,
   CloseSprintDto,
@@ -12,16 +12,8 @@ import {
   UpdateSprintDto,
 } from "./sprints.types.js";
 
-function serializeSprintWithAssignees<
-  T extends { tasks: Array<{ assignee?: { avatarUrl?: string | null } | null }> },
->(sprint: T): T {
-  return {
-    ...sprint,
-    tasks: sprint.tasks.map((task) => ({
-      ...task,
-      assignee: withResolvedUserAvatar(task.assignee),
-    })),
-  };
+function serializeSprintWithAssignees<T extends { tasks: Array<{ assignee?: any }> }>(sprint: T): any {
+  return { ...sprint, tasks: sprint.tasks.map((task) => ({ ...task, assignee: withResolvedUserAvatar(task.assignee) })) };
 }
 
 /**

@@ -11,12 +11,11 @@ export const activityRepository = {
 
   async findByProjectId(
     projectId: string,
-    filters: { category?: ActivityCategory; limit?: number }
+    filters: { category?: ActivityCategory; limit?: number; includeFinance?: boolean }
   ) {
     const where: any = { projectId };
-    if (filters.category) {
-      where.category = filters.category;
-    }
+    if (filters.category) where.category = filters.category;
+    else if (filters.includeFinance === false) where.category = { not: "finance" };
 
     const activities = await prisma.activityLog.findMany({
       where,
@@ -28,7 +27,7 @@ export const activityRepository = {
             id: true,
             name: true,
             email: true,
-            avatarUrl: true,
+            avatarFileId: true,
           },
         },
       },
@@ -45,7 +44,7 @@ export const activityRepository = {
             id: null,
             name: userName || "Pengguna",
             email: null,
-            avatarUrl: null,
+            avatarFileId: null,
             role: userRole || "Anggota",
           },
     }));
@@ -76,7 +75,7 @@ export const activityRepository = {
             id: true,
             name: true,
             email: true,
-            avatarUrl: true,
+            avatarFileId: true,
           },
         },
       },

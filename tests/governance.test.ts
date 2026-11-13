@@ -1,6 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import zlib from "node:zlib";
 
 process.env.JWT_SECRET = "test_only_secret_value_at_least_32_chars_long";
 process.env.NODE_ENV = "test";
@@ -169,64 +168,12 @@ test("AC-B2-3: arbitrase endpoint allows Owner and strictly rejects Developer/Op
   assert.equal((opsError as { statusCode: number }).statusCode, 403);
 });
 
-// ==========================================
-// AC-B2-4: PRD Versioning & Kompresi GZIP
-// ==========================================
-test("AC-B2-4: savePrdVersionSchema validates content length bounds", () => {
-  const valid = savePrdVersionSchema.parse({
-    content: "# PRD Proyek\nIsi spesifikasi lengkap...",
-    description: "Versi revisi sprint 1",
-  });
-  assert.equal(valid.content, "# PRD Proyek\nIsi spesifikasi lengkap...");
-  assert.equal(valid.description, "Versi revisi sprint 1");
-
-  assert.throws(
-    () =>
-      savePrdVersionSchema.parse({
-        content: "x".repeat(500_001),
-      }),
-    /Konten PRD tidak boleh melebihi 500.000 karakter/
-  );
-});
-
-test("AC-B2-4: GZIP compression and decompression preserves content integrity exactly", () => {
-  const originalMarkdown = `# PRD: Cira PM Governance
-## 1. Problem & Scope
-This is a test PRD content to verify GZIP roundtrip compression and decompression.
-${"Lore ipsum dolor sit amet, consectetur adipiscing elit. ".repeat(20)}`;
-
-  // Kompresi dengan zlib.gzipSync
-  const compressed = zlib.gzipSync(Buffer.from(originalMarkdown, "utf-8"));
-  assert.ok(compressed instanceof Buffer);
-  assert.ok(compressed.length > 0);
-
-  // Dekompresi dengan zlib.gunzipSync
-  const decompressed = zlib.gunzipSync(compressed).toString("utf-8");
-  assert.equal(decompressed, originalMarkdown);
-});
-
-test("AC-B2-4: PRD restore logic creates new version at top without overwriting historical version", () => {
-  const versionsHistory = [
-    { versionNumber: 1, content: "PRD Versi 1 awal" },
-    { versionNumber: 2, content: "PRD Versi 2 revisi" },
-  ];
-
-  const targetToRestore = versionsHistory.find((v) => v.versionNumber === 1)!;
-  const currentMaxVersion = Math.max(...versionsHistory.map((v) => v.versionNumber));
-  const newRestoredVersion = {
-    versionNumber: currentMaxVersion + 1,
-    content: targetToRestore.content,
-    description: `Dipulihkan dari Versi #${targetToRestore.versionNumber}`,
-  };
-
-  // Simulasikan penambahan versi baru di urutan teratas
-  const updatedHistory = [newRestoredVersion, ...versionsHistory];
-
-  assert.equal(updatedHistory.length, 3);
-  assert.equal(updatedHistory[0].versionNumber, 3);
-  assert.equal(updatedHistory[0].content, "PRD Versi 1 awal");
-  assert.equal(updatedHistory[1].versionNumber, 1); // Versi lama tetap utuh
-  assert.equal(updatedHistory[2].versionNumber, 2); // Versi lama tetap utuh
+// PRD is stored as immutable PDF file versions; GZIP text snapshots are removed.
+test("AC-B2-4: PRD version metadata is created only from private PDF uploads", async () => {
+  const { uploadSchema, validateUpload } = await import("../src/features/files/fileSecurity.js");
+  assert.equal(uploadSchema.safeParse({ category: "PRD", projectId: "11111111-1111-4111-8111-111111111111", name: "spec.pdf", mimeType: "application/pdf", sizeBytes: 1024 }).success, true);
+  const invalid = uploadSchema.parse({ category: "PRD", projectId: "11111111-1111-4111-8111-111111111111", name: "spec.md", mimeType: "text/markdown", sizeBytes: 1024 });
+  assert.throws(() => validateUpload(invalid));
 });
 
 // ==========================================

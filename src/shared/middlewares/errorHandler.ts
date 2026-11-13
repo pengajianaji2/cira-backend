@@ -39,6 +39,10 @@ export const errorHandler: ErrorRequestHandler = (
       statusCode,
       errorName: typeof err?.name === "string" ? err.name : "UnknownError",
       errorCode: typeof err?.code === "string" ? err.code : undefined,
+      errorMessage: typeof err?.message === "string"
+        ? err.message.replace(/https:\/\/www\.googleapis\.com\/[^\s]+/g, "[Google Drive URL]")
+        : undefined,
+      causeCode: typeof err?.cause?.code === "string" ? err.cause.code : undefined,
     }));
   }
 

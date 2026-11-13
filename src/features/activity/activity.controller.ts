@@ -7,7 +7,8 @@ export const activityController = {
     const projectId = req.params.projectId as string;
     const activities = await activityService.getProjectActivities(
       projectId,
-      res.locals.validatedQuery
+      res.locals.validatedQuery,
+      req.user!
     );
     return sendSuccess(res, "Daftar riwayat aktivitas berhasil diambil", activities);
   },

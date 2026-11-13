@@ -307,6 +307,7 @@ test("US-2 / AC-2.3 & BR-SPRINT-04: completeSprintAtomically enforces TODO task 
 
   const mockTx = {
     $queryRaw: async () => [],
+    $executeRaw: async () => 0,
     sprint: {
       findUnique: async ({ where }: { where: { id: string } }) => {
         if (where.id === "sprint-1") {

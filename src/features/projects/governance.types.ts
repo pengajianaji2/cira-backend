@@ -36,8 +36,3 @@ export interface UpdateRepoLinkDto {
 export interface UpdateRepoTypeDto {
   repoType: ProjectRepoType;
 }
-
-export interface SavePrdVersionDto {
-  content: string;
-  description?: string;
-}

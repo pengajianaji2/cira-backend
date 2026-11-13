@@ -1,9 +1,5 @@
 export interface CreateDesignAssetDto {
-  name: string;
-  originalSize: number;
-  publicId: string;
-  compressionRatio: number;
-  mimeType: "image/png" | "image/jpeg" | "image/webp";
+  uploadSessionId: string;
 }
 
 export interface CreateDesignAssetRecordInput {
@@ -11,7 +7,7 @@ export interface CreateDesignAssetRecordInput {
   originalSize: number;
   compressedSize: number;
   compressionRatio: number;
-  storageReference: string;
+  fileId: string;
   mimeType: string;
 }
 

@@ -16,7 +16,11 @@ model User {
   instagram      String?
   isActive       Boolean          @default(true)
   isPrimaryOwner Boolean          @default(false)
-  avatarUrl      String?
+  avatarFileId   String? @unique
+  avatar         StoredFile? @relation("UserAvatar", fields: [avatarFileId], references: [id], onDelete: SetNull)
+  uploadedFiles  StoredFile[] @relation("FileUploader")
+  ownedFiles     StoredFile[] @relation("FileOwner")
+  uploadSessions FileUploadSession[]
   tokenVersion   Int              @default(0)
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
@@ -30,7 +34,7 @@ model User {
   requestedStatusChanges   ProjectStatusRequest[] @relation("RequestedStatusChanges")
   decidedStatusChanges     ProjectStatusRequest[] @relation("FinalDecidedStatusChanges")
   statusVotes              ProjectStatusVote[]
-  prdVersions              PrdVersion[]
+  prdVersions              ProjectPrdVersion[]
   passwordResetTokens      PasswordResetToken[]
   createdOperationalEvents OperationalEvent[]     @relation("CreatedOperationalEvents")
   updatedOperationalEvents OperationalEvent[]     @relation("UpdatedOperationalEvents")
@@ -105,7 +109,10 @@ model Project {
   repoType      String        @default("monorepo") // monorepo, separate
   progress      Float         @default(0)
   contractValue Decimal       @default(0) @db.Decimal(20, 2)
-  prdContent    String?       @db.Text
+  driveFolderId String?
+  deletionState String?
+  storedFiles StoredFile[]
+  uploadSessions FileUploadSession[]
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
@@ -120,7 +127,7 @@ model Project {
   roster            ProjectRoster[]
   statusRequests    ProjectStatusRequest[]
   repositoryLinks   ProjectRepositoryLink[]
-  prdVersions       PrdVersion[]
+  prdVersions       ProjectPrdVersion[]
   operationalEvents OperationalEvent[]
 
   @@map("projects")
@@ -199,23 +206,19 @@ model ProjectRepositoryLink {
   @@index([projectId])
 }
 
-model PrdVersion {
-  id                String   @id @default(uuid())
-  projectId         String
-  versionNumber     Int
-  compressedContent Bytes
-  charCount         Int
-  description       String?
-  createdById       String?
-  createdBy         User?    @relation(fields: [createdById], references: [id])
-  createdAt         DateTime @default(now())
-
-  project           Project  @relation(fields: [projectId], references: [id], onDelete: Restrict)
-
+model ProjectPrdVersion {
+  id String @id @default(uuid())
+  projectId String
+  versionNumber Int
+  fileId String @unique
+  description String?
+  createdById String?
+  createdAt DateTime @default(now())
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  file StoredFile @relation(fields: [fileId], references: [id], onDelete: Restrict)
+  createdBy User? @relation(fields: [createdById], references: [id])
   @@unique([projectId, versionNumber])
-  @@map("prd_versions")
-  @@index([projectId, versionNumber])
-  @@index([createdAt])
+  @@map("project_prd_versions")
 }
 
 model Sprint {
@@ -272,7 +275,9 @@ model Payment {
   status          String    @default("pending") // pending, verified
   dueDate         String?
   notes           String?   @db.Text
-  proofUrl        String?   @db.Text
+  proofFileId     String? @unique
+  proof StoredFile? @relation("PaymentProof", fields: [proofFileId], references: [id], onDelete: SetNull)
+  uploadSessions FileUploadSession[]
   proofFileName   String?
   proofUploadedAt DateTime?
   verifiedAt      DateTime?
@@ -303,14 +308,17 @@ model PaymentTerm {
   dueDate                  String?   // Legacy field dipertahankan sampai audit consumer selesai
   status                   String    @default("planned") // planned, ready, invoiced, paid
   readyAt                  DateTime?
-  bastUrl                  String?   @db.Text
+  bastFileId               String? @unique
+  bast StoredFile? @relation("TermBast", fields: [bastFileId], references: [id], onDelete: SetNull)
+  uploadSessions FileUploadSession[]
   bastFileName             String?
   bastUploadedAt           DateTime?
   invoiceNumber            String?   @unique
   invoiceIssuedAt          DateTime?
   invoiceDueDate           String?   // YYYY-MM-DD (Asia/Jakarta date-only)
   paidAt                   DateTime?
-  invoicePdfUrl            String?   @db.Text
+  invoiceFileId            String? @unique
+  invoiceFile StoredFile? @relation("TermInvoice", fields: [invoiceFileId], references: [id], onDelete: SetNull)
   isLocked                 Boolean   @default(false)
   notes                    String?   @db.Text
   createdAt                DateTime  @default(now())
@@ -335,7 +343,8 @@ model DesignAsset {
   originalSize     Int
   compressedSize   Int
   compressionRatio Int
-  storageReference String   @db.Text
+  fileId String @unique
+  file StoredFile @relation(fields: [fileId], references: [id], onDelete: Restrict)
   mimeType         String
   createdAt        DateTime @default(now())
 
@@ -396,4 +405,106 @@ model OperationalEvent {
   @@index([status, startAt])
   @@index([status, allDay, allDayStartDate])
   @@index([projectId, status])
+}
+
+enum FileCategory {
+  AVATAR
+  DESIGN
+  PROOF
+  BAST
+  PRD
+  INVOICE
+}
+
+model StoredFile {
+  id String @id @default(uuid())
+  provider String @default("GOOGLE_DRIVE")
+  driveFileId String @unique
+  originalName String
+  storageName String
+  mimeType String
+  sizeBytes Int
+  checksum String?
+  category FileCategory
+  status String @default("ACTIVE")
+  projectId String?
+  ownerUserId String?
+  uploaderId String
+  createdAt DateTime @default(now())
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  owner User? @relation("FileOwner", fields: [ownerUserId], references: [id])
+  uploader User @relation("FileUploader", fields: [uploaderId], references: [id])
+  avatarFor User? @relation("UserAvatar")
+  asset DesignAsset?
+  proofFor Payment? @relation("PaymentProof")
+  bastFor PaymentTerm? @relation("TermBast")
+  invoiceFor PaymentTerm? @relation("TermInvoice")
+  prdVersion ProjectPrdVersion?
+  @@index([projectId, status])
+  @@map("stored_files")
+}
+
+model FileUploadSession {
+  id String @id @default(uuid())
+  userId String
+  projectId String?
+  paymentId String?
+  termId String?
+  category FileCategory
+  originalName String
+  storageName String
+  mimeType String
+  sizeBytes Int
+  driveFileId String @unique
+  folderId String
+  encryptedUri String?
+  offset Int @default(0)
+  signatureVerified Boolean @default(false)
+  status String @default("INITIALIZING")
+  resultFileId String?
+  description String?
+  originalSize Int?
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  user User @relation(fields: [userId], references: [id])
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  payment Payment? @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  term PaymentTerm? @relation(fields: [termId], references: [id], onDelete: Cascade)
+  @@index([status, expiresAt])
+  @@map("file_upload_sessions")
+}
+
+model ProjectDeletionJob {
+  id String @id @default(uuid())
+  projectSnapshotId String @unique
+  projectName String
+  actorId String
+  state String @default("REQUESTED")
+  failureCode String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  completedAt DateTime?
+  items ProjectDeletionItem[]
+  @@map("project_deletion_jobs")
+}
+
+model ProjectDeletionItem {
+  id String @id @default(uuid())
+  jobId String
+  driveFileId String
+  kind String @default("FILE")
+  done Boolean @default(false)
+  job ProjectDeletionJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  @@unique([jobId, driveFileId])
+  @@map("project_deletion_items")
+}
+
+model ProjectDeletionAudit {
+  id String @id @default(uuid())
+  projectSnapshotId String
+  projectName String
+  actorId String
+  result String
+  createdAt DateTime @default(now())
+  @@map("project_deletion_audits")
 }

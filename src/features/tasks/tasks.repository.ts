@@ -8,7 +8,7 @@ const taskIncludes = {
       id: true,
       name: true,
       email: true,
-      avatarUrl: true,
+      avatarFileId: true,
     },
   },
   sprint: {

@@ -3,7 +3,7 @@ import { AuthUserPayload } from "../../shared/middlewares/auth.middleware.js";
 import { sprintsRepository } from "../sprints/sprints.repository.js";
 import { FIBONACCI_POINTS } from "../sprints/sprints.types.js";
 import { tasksRepository } from "./tasks.repository.js";
-import { withResolvedUserAvatar } from "../assets/cloudinary.service.js";
+import { withResolvedUserAvatar } from "../files/fileSecurity.js";
 import {
   CreateTaskDto,
   MoveTaskToSprintDto,
@@ -17,7 +17,7 @@ function isFibonacci(points: number | null | undefined): boolean {
   return (FIBONACCI_POINTS as readonly number[]).includes(points);
 }
 
-function serializeTask<T extends { assignee?: { avatarUrl?: string | null } | null }>(task: T): T {
+function serializeTask<T extends { assignee?: any }>(task: T): any {
   return {
     ...task,
     assignee: withResolvedUserAvatar(task.assignee),

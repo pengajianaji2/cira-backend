@@ -25,7 +25,7 @@ export const governanceRepository = {
             roles: true,
             whatsapp: true,
             instagram: true,
-            avatarUrl: true,
+            avatarFileId: true,
             isActive: true,
           },
         },
@@ -78,7 +78,7 @@ export const governanceRepository = {
             name: true,
             email: true,
             roles: true,
-            avatarUrl: true,
+            avatarFileId: true,
             isActive: true,
           },
         },
@@ -121,7 +121,7 @@ export const governanceRepository = {
                 name: true,
                 email: true,
                 roles: true,
-                avatarUrl: true,
+                avatarFileId: true,
               },
             },
           },
@@ -150,7 +150,7 @@ export const governanceRepository = {
                 name: true,
                 email: true,
                 roles: true,
-                avatarUrl: true,
+                avatarFileId: true,
               },
             },
           },
@@ -196,7 +196,7 @@ export const governanceRepository = {
                 name: true,
                 email: true,
                 roles: true,
-                avatarUrl: true,
+                avatarFileId: true,
               },
             },
           },
@@ -261,7 +261,7 @@ export const governanceRepository = {
                   name: true,
                   email: true,
                   roles: true,
-                  avatarUrl: true,
+                  avatarFileId: true,
                 },
               },
             },
@@ -305,7 +305,7 @@ export const governanceRepository = {
             name: true,
             email: true,
             roles: true,
-            avatarUrl: true,
+            avatarFileId: true,
           },
         },
       },
@@ -317,7 +317,7 @@ export const governanceRepository = {
     status: "approved" | "rejected",
     finalData?: {
       finalDecisionById?: string;
-      finalDecision?: "approve" | "reject";
+      finalDecision?: "approved" | "rejected";
       finalReason?: string;
       finalDecisionAt?: Date;
     }
@@ -389,93 +389,6 @@ export const governanceRepository = {
         name: true,
         repoType: true,
       },
-    });
-  },
-
-  // ==========================================
-  // PRD VERSIONING REPOSITORY
-  // ==========================================
-  async listPrdVersions(projectId: string) {
-    return prisma.prdVersion.findMany({
-      where: { projectId },
-      orderBy: { versionNumber: "desc" },
-      select: {
-        id: true,
-        projectId: true,
-        versionNumber: true,
-        charCount: true,
-        description: true,
-        createdAt: true,
-        createdById: true,
-        createdBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            roles: true,
-          },
-        },
-      },
-    });
-  },
-
-  async findPrdVersionById(id: string) {
-    return prisma.prdVersion.findUnique({
-      where: { id },
-      include: {
-        createdBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            roles: true,
-          },
-        },
-      },
-    });
-  },
-
-  async findLatestPrdVersion(projectId: string) {
-    return prisma.prdVersion.findFirst({
-      where: { projectId },
-      orderBy: { versionNumber: "desc" },
-    });
-  },
-
-  async createPrdVersion(data: {
-    projectId: string;
-    versionNumber: number;
-    compressedContent: Uint8Array<ArrayBuffer>;
-    charCount: number;
-    description?: string;
-    createdById?: string;
-  }) {
-    return prisma.prdVersion.create({
-      data: {
-        projectId: data.projectId,
-        versionNumber: data.versionNumber,
-        compressedContent: data.compressedContent,
-        charCount: data.charCount,
-        description: data.description,
-        createdById: data.createdById,
-      },
-      include: {
-        createdBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            roles: true,
-          },
-        },
-      },
-    });
-  },
-
-  async updateProjectPrdContent(projectId: string, content: string) {
-    return prisma.project.update({
-      where: { id: projectId },
-      data: { prdContent: content },
     });
   },
 
