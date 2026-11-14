@@ -7,8 +7,7 @@ export interface CreateTaskDto {
   status?: TaskStatus;
   priority?: TaskPriority;
   order?: number;
-  storyPoints?: number;
-  sprintId?: string | null;
+  sprintId: string;
   assigneeId?: string;
   assigneeName?: string;
   assigneeRole?: string;
@@ -20,8 +19,7 @@ export interface UpdateTaskDto {
   status?: TaskStatus;
   priority?: TaskPriority;
   order?: number;
-  storyPoints?: number | null;
-  sprintId?: string | null;
+  sprintId?: string;
   assigneeId?: string | null;
   assigneeName?: string | null;
   assigneeRole?: string | null;
@@ -33,7 +31,7 @@ export interface UpdateTaskStatusDto {
 }
 
 export interface MoveTaskToSprintDto {
-  targetSprintId: string | null; // null = Backlog
+  targetSprintId: string;
 }
 
 export interface ProjectTasksResult {

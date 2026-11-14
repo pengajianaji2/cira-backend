@@ -245,7 +245,7 @@ model Sprint {
 model Task {
   id           String   @id @default(uuid())
   projectId    String
-  sprintId     String?
+  sprintId     String
   title        String
   description  String?  @db.Text
   status       String   @default("todo") // todo, in_progress, done
@@ -260,7 +260,7 @@ model Task {
   updatedAt    DateTime @updatedAt
 
   project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  sprint       Sprint?  @relation(fields: [sprintId], references: [id], onDelete: SetNull)
+  sprint       Sprint   @relation(fields: [sprintId], references: [id], onDelete: NoAction)
 
   @@map("tasks")
   @@index([projectId, status, order])

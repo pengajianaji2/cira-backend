@@ -11,7 +11,6 @@ const [
     createSprintSchema,
     updateSprintSchema,
     startSprintSchema,
-    fibonacciStoryPointsSchema,
   },
   { createTaskSchema, updateTaskSchema },
   { sprintsService },
@@ -26,71 +25,14 @@ const [
 ]);
 
 // ==============================================================
-// AC-B3-1: Validasi Story Points Fibonacci [1, 2, 3, 5, 8, 13]
+// AC-B3: Task Todo dihitung dengan bobot yang sama
 // ==============================================================
-test("AC-B3-1: fibonacciStoryPointsSchema accepts all valid Fibonacci values [1, 2, 3, 5, 8, 13]", () => {
-  const validFibonacci = [1, 2, 3, 5, 8, 13];
-  for (const pts of validFibonacci) {
-    const parsed = fibonacciStoryPointsSchema.parse(pts);
-    assert.equal(parsed, pts);
-  }
-});
-
-test("AC-B3-1: fibonacciStoryPointsSchema strictly rejects non-Fibonacci numbers", () => {
-  const invalidIntegers = [0, 4, 6, 7, 9, 10, 11, 12, 14, 21, -1];
-  for (const val of invalidIntegers) {
-    assert.throws(
-      () => fibonacciStoryPointsSchema.parse(val),
-      /Story points wajib salah satu deret Fibonacci: 1, 2, 3, 5, 8, 13/
-    );
-  }
-
-  // Non-integer numbers harus ditolak
-  assert.throws(
-    () => fibonacciStoryPointsSchema.parse(3.5),
-    /Story points harus berupa bilangan bulat/
-  );
-});
-
-test("AC-B3-1: createTaskSchema and updateTaskSchema validate storyPoints using Fibonacci", () => {
-  // Valid create task with story points
-  const validTask = createTaskSchema.parse({
-    title: "Implementasi Login RBAC",
-    storyPoints: 5,
-    assigneeId: "user-123",
-  });
-  assert.equal(validTask.storyPoints, 5);
-
-  // Invalid create task with non-Fibonacci
-  assert.throws(
-    () =>
-      createTaskSchema.parse({
-        title: "Task Non Fibonacci",
-        storyPoints: 4,
-      }),
-    /Story points wajib salah satu deret Fibonacci/
-  );
-
-  // Valid update task
-  const validUpdate = updateTaskSchema.parse({
-    storyPoints: 8,
-  });
-  assert.equal(validUpdate.storyPoints, 8);
-
-  // Update task allow null (remove points)
-  const nullUpdate = updateTaskSchema.parse({
-    storyPoints: null,
-  });
-  assert.equal(nullUpdate.storyPoints, null);
-
-  // Invalid update task
-  assert.throws(
-    () =>
-      updateTaskSchema.parse({
-        storyPoints: 7,
-      }),
-    /Story points wajib salah satu deret Fibonacci/
-  );
+test("task schemas use Todo fields and do not expose story points", () => {
+  const task = createTaskSchema.parse({ title: "Implementasi Login RBAC", priority: "high", storyPoints: 5 });
+  const update = updateTaskSchema.parse({ priority: "medium", storyPoints: 8 });
+  assert.equal(task.priority, "high");
+  assert.equal("storyPoints" in task, false);
+  assert.equal("storyPoints" in update, false);
 });
 
 test("US-2 / AC-2.1: sprint schemas strictly reject malformed date strings while allowing optional planning dates", () => {
@@ -156,7 +98,7 @@ test("US-2 / AC-2.2: startSprint rejects missing dates, invalid format, or start
   );
 });
 
-test("US-2 / AC-2.2: startSprint activates planning sprint with valid dates without requiring assignee or storyPoints on tasks", async (t) => {
+test("US-2 / AC-2.2: startSprint activates planning sprint with valid dates without requiring an assignee", async (t) => {
   const originalFindById = sprintsRepository.findById;
   const originalFindActive = sprintsRepository.findActiveSprintByProjectId;
   const originalStartAtomically = sprintsRepository.startSprintAtomically;
@@ -172,7 +114,7 @@ test("US-2 / AC-2.2: startSprint activates planning sprint with valid dates with
       status: "planning",
       startDate: null,
       tasks: [
-        { id: "t1", title: "Task Tanpa Assignee", assigneeId: null, storyPoints: null, status: "todo" },
+        { id: "t1", title: "Task Tanpa Assignee", assigneeId: null, status: "todo" },
       ],
       project: { id: "proj-1", ownerId: "owner-1" },
     } as any);
@@ -219,7 +161,7 @@ test("Sprint Rule: startSprint strictly rejects starting if another sprint is al
       projectId: "proj-1",
       name: "Sprint 2",
       status: "planning",
-      tasks: [{ id: "t1", title: "Task 1", assigneeId: "user-1", storyPoints: 5, status: "todo" }],
+      tasks: [{ id: "t1", title: "Task 1", assigneeId: "user-1", status: "todo" }],
       project: { id: "proj-1", ownerId: "owner-1" },
     } as any);
 
@@ -404,40 +346,13 @@ test("US-2 / AC-2.3 & BR-SPRINT-04: completeSprintAtomically enforces TODO task 
 });
 
 // ==============================================================
-// AC-B3-3: Kalkulasi Formula Matematis Progres Kumulatif
-// Formula: (Points Sprint Selesai / Points Seluruh Scope Disetujui) * 100%
+// AC-B3: Progres berbasis jumlah Todo
 // ==============================================================
-test("AC-B3-3: Cumulative progress calculates mathematical percentage correctly across sprints", () => {
-  // Simulasi proyek dengan multi-sprint & backlog
-  // Scope Disetujui:
-  // Sprint 1 (Completed): 8 pts (done)
-  // Sprint 2 (Completed): 5 pts (done)
-  // Sprint 3 (Active): 13 pts (in_progress)
-  // Backlog: 5 pts (todo)
-  // Total Scope Points: 8 + 5 + 13 + 5 = 31 points
-
-  const totalScopePoints = 8 + 5 + 13 + 5; // 31
-  const completedSprintPoints = 8 + 5; // 13
-
-  const expectedProgress = Math.round((completedSprintPoints / totalScopePoints) * 10000) / 100;
-  // 13 / 31 * 100 = 41.9354... -> 41.94%
-  assert.equal(expectedProgress, 41.94);
-
-  // Jika Sprint 3 juga selesai:
-  const completedWithSprint3 = completedSprintPoints + 13; // 26
-  const progressWithSprint3 = Math.round((completedWithSprint3 / totalScopePoints) * 10000) / 100;
-  // 26 / 31 * 100 = 83.8709... -> 83.87%
-  assert.equal(progressWithSprint3, 83.87);
-
-  // Jika seluruh scope selesai:
-  const allCompleted = totalScopePoints;
-  const progressAll = Math.round((allCompleted / totalScopePoints) * 10000) / 100;
-  assert.equal(progressAll, 100);
-
-  // Jika scope 0 points:
-  const emptyScope = 0;
-  const progressZero = emptyScope > 0 ? (0 / emptyScope) * 100 : 0;
-  assert.equal(progressZero, 0);
+test("project progress counts completed Todo equally", () => {
+  const totalTasks = 8;
+  const completedTasks = 3;
+  const progress = Math.round((completedTasks / totalTasks) * 1000) / 10;
+  assert.equal(progress, 37.5);
 });
 
 // ==============================================================

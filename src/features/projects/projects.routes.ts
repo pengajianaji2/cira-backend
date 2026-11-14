@@ -30,6 +30,7 @@ import {
   updateRepoTypeSchema,
 } from "./governance.schema.js";
 import { projectsController } from "./projects.controller.js";
+import { withResourceLock } from "../../shared/services/resourceLock.js";
 import {
   createProjectSchema,
   projectIdParamSchema,
@@ -232,11 +233,13 @@ router.post('/:projectId/prd/versions', requirePermission('prd.write'), validate
   return sendSuccess(res,'Versi PRD baru berhasil disimpan.',result,201);
 }));
 router.delete('/:id', requireAnyRole('owner'), validateRequest({params:projectIdParamSchema,body:z.object({password:z.string().min(1).max(72)})}), requireProjectAccess('id',true), asyncHandler(async(req,res)=>{
-  const result=await projectDeletionService.delete(String(req.params.id),req.body.password,req.user!);
+  const projectId=String(req.params.id);
+  const result=await withResourceLock(`project:${projectId}`,()=>projectDeletionService.delete(projectId,req.body.password,req.user!));
   return sendSuccess(res,result.state==='COMPLETED'?'Proyek berhasil dihapus.':'Penghapusan proyek dilanjutkan.',result,result.state==='COMPLETED'?200:202);
 }));
 router.post('/:projectId/deletion/retry', requireAnyRole('owner'), validateRequest({params:projectParamSchema,body:z.object({password:z.string().min(1).max(72)})}), requireProjectAccess('projectId',true), asyncHandler(async(req,res)=>{
-  const result=await projectDeletionService.delete(String(req.params.projectId),req.body.password,req.user!);
+  const projectId=String(req.params.projectId);
+  const result=await withResourceLock(`project:${projectId}`,()=>projectDeletionService.delete(projectId,req.body.password,req.user!));
   return sendSuccess(res,result.state==='COMPLETED'?'Proyek berhasil dihapus.':'Penghapusan proyek dilanjutkan.',result,result.state==='COMPLETED'?200:202);
 }));
 router.get(

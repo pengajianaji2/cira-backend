@@ -1,18 +1,5 @@
 import { z } from "zod";
 
-/** Nilai bobot story points deret Fibonacci yang valid di sistem (`[1, 2, 3, 5, 8, 13]`). */
-export const FIBONACCI_VALUES = [1, 2, 3, 5, 8, 13] as const;
-
-export const fibonacciStoryPointsSchema = z
-  .number()
-  .int("Story points harus berupa bilangan bulat")
-  .refine(
-    (val) => (FIBONACCI_VALUES as readonly number[]).includes(val),
-    {
-      message: "Story points wajib salah satu deret Fibonacci: 1, 2, 3, 5, 8, 13",
-    }
-  );
-
 export const sprintStatusEnum = z.enum(["planning", "active", "completed"]);
 
 function isValidParsedDateString(value: string | null | undefined): boolean {
@@ -30,6 +17,12 @@ export const createSprintSchema = z
     goal: z.string().max(2000).optional(),
     startDate: z.string().optional(),
     endDate: z.string().optional(),
+    tasks: z.array(z.object({
+      title: z.string().trim().min(1).max(255),
+      description: z.string().max(20_000).optional(),
+      priority: z.enum(["low", "medium", "high", "urgent"]).default("medium"),
+      assigneeId: z.string().min(1).nullable().optional(),
+    })).max(200).optional(),
   })
   .refine((data) => isValidParsedDateString(data.startDate), {
     message: "Format tanggal mulai (startDate) tidak valid",
@@ -107,11 +100,11 @@ export const startSprintSchema = z
 
 /**
  * BR-SPRINT-04 — Resolusi Task saat penutupan sprint.
- * Setiap task TODO wajib memiliki targetSprintId (string atau null untuk Backlog).
+ * Setiap task TODO wajib memiliki Sprint tujuan.
  */
 export const taskMoveTargetSchema = z.object({
   taskId: z.string().min(1, "ID task wajib disertakan"),
-  targetSprintId: z.string().nullable(), // null = Backlog
+  targetSprintId: z.string().min(1),
 });
 
 export const closeSprintSchema = z.object({

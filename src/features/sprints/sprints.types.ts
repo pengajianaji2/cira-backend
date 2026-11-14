@@ -1,13 +1,16 @@
 export type SprintStatus = "planning" | "active" | "completed";
 
-export const FIBONACCI_POINTS = [1, 2, 3, 5, 8, 13] as const;
-export type FibonacciPoint = (typeof FIBONACCI_POINTS)[number];
-
 export interface CreateSprintDto {
   name: string;
   goal?: string;
   startDate?: string;
   endDate?: string;
+  tasks?: Array<{
+    title: string;
+    description?: string;
+    priority?: "low" | "medium" | "high" | "urgent";
+    assigneeId?: string | null;
+  }>;
 }
 
 export interface UpdateSprintDto {
@@ -24,7 +27,7 @@ export interface StartSprintDto {
 
 export interface TaskMoveTarget {
   taskId: string;
-  targetSprintId: string | null; // null = Backlog
+  targetSprintId: string;
 }
 
 export interface CloseSprintDto {
@@ -44,8 +47,6 @@ export interface SprintSummary {
   startDate: Date | null;
   endDate: Date | null;
   completedAt: Date | null;
-  totalPoints: number;
-  completedPoints: number;
   totalTasks: number;
   completedTasks: number;
   createdAt: Date;
@@ -54,8 +55,8 @@ export interface SprintSummary {
 
 export interface ProjectCumulativeProgress {
   projectId: string;
-  totalScopePoints: number;
-  completedPoints: number;
+  totalTasks: number;
+  completedTasks: number;
   progress: number; // in percent (0 - 100)
   completedSprintCount?: number;
   totalSprintCount?: number;

@@ -10,7 +10,7 @@
 Backend `cira-pm-backend` perlu diperluas dari MVP awal untuk mendukung:
 1. **RBAC 3-Role Ketat**: Pembagian role eksplisit (`Owner`, `Developer`, `Operasional`) di middleware backend, token aktivasi undangan 24 jam sekali pakai, profil kontak wajib (WhatsApp internasional & Instagram handle), dan isolasi akun nonaktif.
 2. **Persetujuan Status Proyek & Versioning PRD**: Sistem voting permohonan status oleh roster proyek (dengan final override Owner jika ada penolakan), manajemen repositori berlabel, catatan audit *append-only*, dan riwayat versi PRD terkompresi GZIP (`zlib`).
-3. **Sprint & Progres Terbobot**: Pengelolaan daur hidup sprint (tanpa tumpang tindih), validasi story points Fibonacci (`1, 2, 3, 5, 8, 13`), tepat satu assignee per task, dan formula penghitungan progres kumulatif proyek.
+3. **Sprint, Todo & Progres**: Pengelolaan Sprint dan Todo, pembuatan Sprint beserta Todo template dalam satu transaksi, dan progres berbasis jumlah Todo selesai dibanding seluruh Todo.
 4. **Tata Kelola Finansial Terstruktur**: Kontrak proyek dengan daftar termin terbobot tepat 100% (penyerapan selisih pembulatan), trigger kesiapan termin (BAST modul/sprint, tanggal, manual), dan penerbitan invoice PDF resmi dengan penomoran berurutan unik tahunan `INV-YYYY-NNN/Tn`.
 
 ---
@@ -59,12 +59,11 @@ Setiap request ke `/api/v1/*` divalidasi oleh `requireAuth` dan `requireRole(...
 - **AC-B2-4 (PRD Versioning & GZIP)**: Given pembaruan isi PRD pada `POST /api/v1/projects/:id/prd/versions`, When teks PRD berbeda dari versi terakhir, Then isi teks dikompresi dengan `zlib.gzipSync` dan disimpan sebagai record versi baru; When endpoint restore dipanggil, versi lama didekompresi dan disimpan sebagai versi baru di urutan teratas.
 - **AC-B2-5 (Tautan Repositori)**: Given proyek bertipe Monorepo atau Repo Terpisah, When Owner/Developer memanggil endpoint CRUD `POST/PATCH/DELETE /api/v1/projects/:id/repositories`, Then data tautan berlabel tersimpan dan divalidasi URL formatnya.
 
-### US-3: Sprint Lifecycle, Story Points Fibonacci, & Progres Kumulatif
-- **AC-B3-1 (Validasi Story Points & Single Assignee)**: Given pembuatan/pembaruan task pada `POST/PATCH /api/v1/projects/:id/tasks`, When task dimasukkan ke sprint atau scope disetujui, Then server memvalidasi nilai `storyPoints` wajib salah satu dari `[1, 2, 3, 5, 8, 13]` dan task wajib memiliki 1 `assigneeId` sebelum sprint dimulai.
-- **AC-B3-2 (Selesai Sprint)**: Given sprint yang memiliki task dengan status bukan `done`, When `PATCH /api/v1/sprints/:id/complete` dipanggil, Then server menolak dengan `400 Bad Request` *"Semua task dalam sprint harus berstatus done"*.
-- **AC-B3-3 (Kalkulasi Progres Proyek)**: Given sebuah sprint ditandai selesai atau dibuka kembali, When progres proyek dihitung, Then server mengalkulasi:
-  $$\text{Progres} = \frac{\text{Total points task sprint selesai}}{\text{Total points seluruh scope disetujui}} \times 100\%$$
-  dan memperbarui field `progress` pada tabel `Project`.
+### US-3: Sprint Lifecycle, Todo & Progres
+- **AC-B3-1 (Buat Sprint + Todo)**: `POST /api/v1/projects/:projectId/sprints` menerima daftar Todo opsional; Sprint dan seluruh Todo dibuat dalam transaksi yang sama.
+- **AC-B3-2 (Progres Berbasis Todo)**: API menghitung `task done / total task * 100`; setiap task memiliki bobot sama dan story points tidak digunakan.
+- **AC-B3-3 (Penutupan Sprint)**: Todo berstatus `todo` yang tersisa wajib dialihkan ke Sprint planning lain saat Sprint ditutup.
+- **AC-B3-4 (Sprint Wajib & PIC Opsional)**: Setiap Todo wajib terhubung ke satu Sprint dan dapat memiliki maksimal satu PIC dari roster proyek. PIC tidak wajib untuk aktivasi Sprint dan dapat diubah melalui dialog edit Sprint. Data Todo lama tanpa Sprint dimigrasikan ke Sprint planning.
 
 ### US-4: Kontrak, Termin 100%, Trigger BAST, & Invoice PDF
 - **AC-B4-1 (Validasi Termin 100% & Penyerapan Pembulatan)**: Given pembuatan kontrak awal di `POST /api/v1/projects/:id/contracts`, When daftar termin dikirimkan, Then server memvalidasi jumlah persentase seluruh termin wajib tepat `100.00%`, termin terakhir menyerap selisih pembulatan rupiah dari `contractValue`, dan total nominal seluruh termin sama persis dengan `contractValue`.

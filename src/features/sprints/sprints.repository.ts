@@ -20,6 +20,14 @@ export const sprintsRepository = {
     return Boolean(member);
   },
 
+  async findRosterUserIds(projectId: string): Promise<string[]> {
+    const members = await prisma.projectRoster.findMany({
+      where: { projectId },
+      select: { userId: true },
+    });
+    return members.map(({ userId }) => userId);
+  },
+
   async findSprintsByProjectId(projectId: string) {
     return prisma.sprint.findMany({
       where: { projectId },
@@ -77,18 +85,27 @@ export const sprintsRepository = {
   },
 
   async create(projectId: string, data: CreateSprintDto) {
-    return prisma.sprint.create({
-      data: {
-        projectId,
-        name: data.name,
-        goal: data.goal,
-        status: "planning",
-        startDate: data.startDate ? new Date(data.startDate) : null,
-        endDate: data.endDate ? new Date(data.endDate) : null,
-      },
-      include: {
-        tasks: true,
-      },
+    return prisma.$transaction(async (tx) => {
+      const sprint = await tx.sprint.create({
+        data: {
+          projectId,
+          name: data.name,
+          goal: data.goal,
+          status: "planning",
+          startDate: data.startDate ? new Date(data.startDate) : null,
+          endDate: data.endDate ? new Date(data.endDate) : null,
+        },
+      });
+      if (data.tasks?.length) {
+        await tx.task.createMany({
+          data: data.tasks.map((task, order) => ({
+            projectId, sprintId: sprint.id, title: task.title,
+            description: task.description, priority: task.priority ?? "medium", status: "todo", order,
+            assigneeId: task.assigneeId ?? null,
+          })),
+        });
+      }
+      return tx.sprint.findUniqueOrThrow({ where: { id: sprint.id }, include: { tasks: true } });
     });
   },
 
@@ -141,7 +158,7 @@ export const sprintsRepository = {
 
   /**
    * BR-SPRINT-04, BR-SPRINT-05 & AC-3.2 — Penutupan Sprint Atomik
-   * - Memindahkan seluruh task 'todo' ke Backlog atau sprint non-completed lain
+   * - Memindahkan seluruh task 'todo' ke sprint non-completed lain
    * - Mengubah status sprint menjadi completed & mengisi completedAt
    * - Menghitung ulang dan menyimpan progress proyek (BR-PROJECT-01)
    * - Mengevaluasi pemicu termin berbasis jumlah sprint selesai secara idempotent (AC-3.2)
@@ -177,33 +194,26 @@ export const sprintsRepository = {
         const move = taskMoves.find((m) => m.taskId === todoTask.id);
         if (!move) {
           throw new BadRequestError(
-            `Task TODO "${todoTask.title}" belum ditentukan tujuannya (wajib dialokasikan ke Backlog atau Sprint lain).`
+            `Task TODO "${todoTask.title}" belum ditentukan Sprint tujuannya.`
           );
         }
 
-        if (move.targetSprintId) {
-          const targetSprint = await tx.sprint.findUnique({
-            where: { id: move.targetSprintId },
-            select: { id: true, projectId: true, status: true, name: true },
-          });
+        const targetSprint = await tx.sprint.findUnique({
+          where: { id: move.targetSprintId },
+          select: { id: true, projectId: true, status: true, name: true },
+        });
 
-          if (!targetSprint || targetSprint.projectId !== projectId) {
-            throw new BadRequestError("Sprint target pemindahan task harus berada dalam proyek yang sama.");
-          }
-          if (targetSprint.status === "completed") {
-            throw new BadRequestError(`Sprint target "${targetSprint.name}" sudah berstatus completed dan tidak dapat menerima task.`);
-          }
-
-          await tx.task.update({
-            where: { id: todoTask.id },
-            data: { sprintId: move.targetSprintId },
-          });
-        } else {
-          await tx.task.update({
-            where: { id: todoTask.id },
-            data: { sprintId: null },
-          });
+        if (!targetSprint || targetSprint.projectId !== projectId) {
+          throw new BadRequestError("Sprint target pemindahan task harus berada dalam proyek yang sama.");
         }
+        if (targetSprint.status === "completed") {
+          throw new BadRequestError(`Sprint target "${targetSprint.name}" sudah berstatus completed dan tidak dapat menerima task.`);
+        }
+
+        await tx.task.update({
+          where: { id: todoTask.id },
+          data: { sprintId: move.targetSprintId },
+        });
       }
 
       // 3. Update status sprint menjadi completed (BR-SPRINT-06: completedAt diisi pada transisi pertama)
@@ -218,7 +228,7 @@ export const sprintsRepository = {
         },
       });
 
-      // 4. Hitung dan simpan progress proyek berbasis sprint (BR-PROJECT-01)
+      // 4. Hitung progres dari jumlah Todo selesai agar setiap task berbobot sama.
       const totalSprintCount = await tx.sprint.count({
         where: { projectId },
       });
@@ -226,10 +236,11 @@ export const sprintsRepository = {
         where: { projectId, status: "completed" },
       });
 
-      const progress =
-        totalSprintCount === 0
-          ? 0
-          : Math.min(100, Math.round((completedSprintCount / totalSprintCount) * 1000) / 10);
+      const [totalTasks, completedTasks] = await Promise.all([
+        tx.task.count({ where: { projectId } }),
+        tx.task.count({ where: { projectId, status: "done" } }),
+      ]);
+      const progress = totalTasks ? Math.round((completedTasks / totalTasks) * 1000) / 10 : 0;
 
       await tx.project.update({
         where: { id: projectId },
@@ -299,51 +310,26 @@ export const sprintsRepository = {
   },
 
   /**
-   * BR-PROJECT-01 — Rumus progres proyek:
-   * progress = completedSprintCount / totalSprintCount * 100%
+   * Progres proyek dihitung dari task selesai dibagi seluruh task.
    */
   async calculateCumulativeProgress(projectId: string): Promise<{
-    totalScopePoints: number;
-    completedPoints: number;
+    totalTasks: number;
+    completedTasks: number;
     progress: number;
     completedSprintCount: number;
     totalSprintCount: number;
   }> {
-    const [totalSprintCount, completedSprintCount, scopedTasks] = await Promise.all([
+    const [totalSprintCount, completedSprintCount, totalTasks, completedTasks] = await Promise.all([
       prisma.sprint.count({ where: { projectId } }),
       prisma.sprint.count({ where: { projectId, status: "completed" } }),
-      prisma.task.findMany({
-        where: { projectId, storyPoints: { not: null } },
-        select: {
-          storyPoints: true,
-          status: true,
-          sprint: { select: { status: true } },
-        },
-      }),
+      prisma.task.count({ where: { projectId } }),
+      prisma.task.count({ where: { projectId, status: "done" } }),
     ]);
-
-    const totalScopePoints = scopedTasks.reduce(
-      (sum, task) => sum + (task.storyPoints ?? 0),
-      0
-    );
-
-    const completedTasks = scopedTasks.filter(
-      (task) => task.sprint?.status === "completed" && task.status === "done"
-    );
-
-    const completedPoints = completedTasks.reduce(
-      (sum, task) => sum + (task.storyPoints ?? 0),
-      0
-    );
-
-    const progress =
-      totalSprintCount === 0
-        ? 0
-        : Math.min(100, Math.round((completedSprintCount / totalSprintCount) * 1000) / 10);
+    const progress = totalTasks ? Math.round((completedTasks / totalTasks) * 1000) / 10 : 0;
 
     return {
-      totalScopePoints,
-      completedPoints,
+      totalTasks,
+      completedTasks,
       progress,
       completedSprintCount,
       totalSprintCount,

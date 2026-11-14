@@ -2,27 +2,14 @@ import { z } from "zod";
 
 export const taskStatusEnum = z.enum(["todo", "done"]);
 export const taskPriorityEnum = z.enum(["low", "medium", "high", "urgent"]);
-export const FIBONACCI_VALUES = [1, 2, 3, 5, 8, 13] as const;
-
-export const taskStoryPointsSchema = z
-  .number()
-  .int("Story points harus berupa bilangan bulat")
-  .refine(
-    (val) => (FIBONACCI_VALUES as readonly number[]).includes(val),
-    {
-      message: "Story points wajib salah satu deret Fibonacci: 1, 2, 3, 5, 8, 13",
-    }
-  );
-
-/** Schema validasi pembuatan task baru (`sprintId` opsional; kosong/null berarti Backlog proyek). */
+/** Schema validasi pembuatan task yang wajib terhubung ke Sprint. */
 export const createTaskSchema = z.object({
   title: z.string().trim().min(1, "Judul task wajib diisi").max(255),
   description: z.string().max(20_000).optional(),
   status: taskStatusEnum.default("todo"),
   priority: taskPriorityEnum.default("medium"),
   order: z.number().int().nonnegative().optional(),
-  storyPoints: taskStoryPointsSchema.optional(),
-  sprintId: z.string().nullable().optional(),
+  sprintId: z.string().min(1, "Sprint wajib dipilih"),
   assigneeId: z.string().optional(),
   assigneeName: z.string().optional(),
   assigneeRole: z.string().optional(),
@@ -35,8 +22,7 @@ export const updateTaskSchema = z.object({
   status: taskStatusEnum.optional(),
   priority: taskPriorityEnum.optional(),
   order: z.number().int().nonnegative().optional(),
-  storyPoints: taskStoryPointsSchema.nullable().optional(),
-  sprintId: z.string().nullable().optional(),
+  sprintId: z.string().min(1).optional(),
   assigneeId: z.string().nullable().optional(),
   assigneeName: z.string().nullable().optional(),
   assigneeRole: z.string().nullable().optional(),
@@ -48,9 +34,9 @@ export const updateTaskStatusSchema = z.object({
   order: z.number().int().nonnegative().optional(),
 });
 
-/** Schema validasi pemindahan task ke Backlog (`targetSprintId = null`) atau sprint non-completed target. */
+/** Schema validasi pemindahan task ke Sprint target. */
 export const moveTaskToSprintSchema = z.object({
-  targetSprintId: z.string().nullable(),
+  targetSprintId: z.string().min(1),
 });
 
 export const taskIdParamSchema = z.object({

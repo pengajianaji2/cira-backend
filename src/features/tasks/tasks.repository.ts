@@ -90,7 +90,6 @@ export const tasksRepository = {
         status: data.status || "todo",
         priority: data.priority || "medium",
         order: data.order ?? 0,
-        storyPoints: data.storyPoints,
         sprintId: data.sprintId,
         assigneeId: data.assigneeId,
         assigneeName: data.assigneeName,

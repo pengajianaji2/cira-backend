@@ -1,7 +1,6 @@
 import { BadRequestError, NotFoundError } from "../../shared/errors/AppError.js";
 import { AuthUserPayload } from "../../shared/middlewares/auth.middleware.js";
 import { sprintsRepository } from "../sprints/sprints.repository.js";
-import { FIBONACCI_POINTS } from "../sprints/sprints.types.js";
 import { tasksRepository } from "./tasks.repository.js";
 import { withResolvedUserAvatar } from "../files/fileSecurity.js";
 import {
@@ -12,11 +11,6 @@ import {
   UpdateTaskStatusDto,
 } from "./tasks.types.js";
 
-function isFibonacci(points: number | null | undefined): boolean {
-  if (points === null || points === undefined) return false;
-  return (FIBONACCI_POINTS as readonly number[]).includes(points);
-}
-
 function serializeTask<T extends { assignee?: any }>(task: T): any {
   return {
     ...task,
@@ -26,7 +20,7 @@ function serializeTask<T extends { assignee?: any }>(task: T): any {
 
 export const tasksService = {
   /**
-   * Mengambil seluruh daftar task proyek (Backlog & Sprint) beserta status keterpenuhan DP untuk peringatan visual (`dpWarning`).
+   * Mengambil seluruh Todo proyek beserta status keterpenuhan DP untuk peringatan visual (`dpWarning`).
    *
    * @param projectId - ID proyek target.
    * @throws {NotFoundError} Bila proyek tidak ditemukan.
@@ -51,7 +45,7 @@ export const tasksService = {
 
   /**
    * BR-TASK-01 — Status tunggal ('todo' | 'done'). Default 'todo'.
-   * BR-TASK-02 — Default Backlog (sprintId = null). Penambahan ke sprint eksplisit.
+   * BR-TASK-02 — Setiap task harus langsung berada dalam satu Sprint.
    * BR-TASK-04 — Sprint harus dalam proyek yang sama dan tidak boleh completed.
    */
   async createTask(projectId: string, dto: CreateTaskDto, user?: AuthUserPayload) {
@@ -60,27 +54,21 @@ export const tasksService = {
       throw new NotFoundError(`Proyek dengan ID '${projectId}' tidak ditemukan.`);
     }
 
-    const sprintId = dto.sprintId || null;
+    const sprintId = dto.sprintId;
 
-    // Jika task ditugaskan ke sprint tertentu
-    if (sprintId) {
-      const sprint = await sprintsRepository.findById(sprintId);
-      if (!sprint) {
-        throw new NotFoundError(`Sprint dengan ID '${sprintId}' tidak ditemukan.`);
-      }
-      if (sprint.projectId !== projectId) {
-        throw new BadRequestError("Sprint harus berasal dari proyek yang sama dengan task.");
-      }
-      if (sprint.status === "completed") {
-        throw new BadRequestError("Sprint yang sudah selesai (completed) tidak dapat menerima task baru.");
-      }
+    if (dto.assigneeId && !(await sprintsRepository.isUserInProjectRoster(projectId, dto.assigneeId))) {
+      throw new BadRequestError("PIC task harus berasal dari roster proyek.");
+    }
 
-      // Jika sprint berstatus aktif, verifikasi assignee & points jika diisi
-      if (sprint.status === "active" && dto.storyPoints && !isFibonacci(dto.storyPoints)) {
-        throw new BadRequestError(
-          "Story points wajib salah satu deret Fibonacci (1, 2, 3, 5, 8, 13)."
-        );
-      }
+    const sprint = await sprintsRepository.findById(sprintId);
+    if (!sprint) {
+      throw new NotFoundError(`Sprint dengan ID '${sprintId}' tidak ditemukan.`);
+    }
+    if (sprint.projectId !== projectId) {
+      throw new BadRequestError("Sprint harus berasal dari proyek yang sama dengan task.");
+    }
+    if (sprint.status === "completed") {
+      throw new BadRequestError("Sprint yang sudah selesai (completed) tidak dapat menerima task baru.");
     }
 
     const status = dto.status || "todo";
@@ -101,7 +89,7 @@ export const tasksService = {
         projectId,
         category: "task",
         action: "CREATE",
-        description: `Task "${task.title}" dibuat di daftar ${sprintId ? "Sprint" : "Backlog"} dengan status ${task.status}.`,
+        description: `Task "${task.title}" dibuat di Sprint "${task.sprint?.name ?? sprintId}" dengan status ${task.status}.`,
         userId: user?.id,
         userName: user?.name,
         userRole: user?.roles?.[0],
@@ -109,7 +97,6 @@ export const tasksService = {
           taskId: task.id,
           status: task.status,
           priority: task.priority,
-          storyPoints: task.storyPoints,
           sprintId: task.sprintId,
         },
       }, tx);
@@ -154,10 +141,9 @@ export const tasksService = {
   },
 
   /**
-   * BR-TASK-03 & BR-TASK-04 — Pemindahan task antar sprint atau ke Backlog.
+   * BR-TASK-03 & BR-TASK-04 — Pemindahan task antar sprint.
    * - Memeriksa proyek sama
    * - Sprint target valid dan tidak completed
-   * - targetSprintId = null memindahkan kembali ke Backlog
    */
   async moveTaskToSprint(
     id: string,
@@ -171,25 +157,6 @@ export const tasksService = {
 
     const { targetSprintId } = dto;
 
-    // Jika dipindahkan ke Backlog (targetSprintId === null)
-    if (!targetSprintId) {
-      return tasksRepository.transaction(async (tx) => {
-        const updated = await tasksRepository.update(id, { sprintId: null }, tx);
-        await tasksRepository.logActivity({
-          projectId: existing.projectId,
-          category: "task",
-          action: "MOVE_TO_BACKLOG",
-          description: `Task "${existing.title}" dipindahkan ke Backlog.`,
-          userId: user?.id,
-          userName: user?.name,
-          userRole: user?.roles?.[0],
-          metadata: { taskId: id, previousSprintId: existing.sprintId, newSprintId: null },
-        }, tx);
-        return serializeTask(updated);
-      });
-    }
-
-    // Jika dipindahkan ke Sprint
     const targetSprint = await sprintsRepository.findById(targetSprintId);
     if (!targetSprint) {
       throw new NotFoundError(`Sprint target dengan ID '${targetSprintId}' tidak ditemukan.`);
@@ -239,8 +206,12 @@ export const tasksService = {
       throw new NotFoundError(`Task dengan ID '${id}' tidak ditemukan.`);
     }
 
+    if (dto.assigneeId && !(await sprintsRepository.isUserInProjectRoster(existing.projectId, dto.assigneeId))) {
+      throw new BadRequestError("PIC task harus berasal dari roster proyek.");
+    }
+
     // Jika sprintId diubah
-    if (dto.sprintId !== undefined && dto.sprintId !== null) {
+    if (dto.sprintId !== undefined) {
       const sprint = await sprintsRepository.findById(dto.sprintId);
       if (!sprint || sprint.projectId !== existing.projectId) {
         throw new BadRequestError("Sprint harus berasal dari proyek yang sama dengan task.");

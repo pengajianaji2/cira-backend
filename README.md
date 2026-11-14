@@ -49,7 +49,7 @@ backend/
 │   │   ├── auth/                                         # Login/logout, JWT, aktivasi undangan 24 jam, reset password 30 menit, avatar, RolePolicy
 │   │   ├── users/                                        # Direktori anggota tim (/api/v1/users/directory)
 │   │   ├── projects/                                     # CRUD proyek, nilai kontrak, voting roster, status approval, repo links, PRD GZIP
-│   │   ├── tasks/                                        # Checklist TODO/DONE, default Backlog, pemindahan sprint, DP warning
+│   │   ├── tasks/                                        # Checklist TODO/DONE dalam Sprint, PIC roster, DP warning
 │   │   ├── sprints/                                      # Daur hidup sprint (planning/active/completed), penutupan atomik, progres rasio sprint
 │   │   ├── finance/                                      # Kontrak termin 100%, evaluator pemicu WIB, BAST opsional, invoice manual, legacy payments
 │   │   ├── operations/                                   # Kalender operasional teragregasi (WIB maks 90 hari) & CRUD agenda manual
@@ -224,14 +224,14 @@ npm test
 | `POST` | `/api/v1/projects/:projectId/prd/versions` | Menyimpan snapshot versi PRD baru terkompresi GZIP | `prd.write` |
 | `POST` | `/api/v1/projects/:projectId/prd/versions/:versionId/restore` | Memulihkan versi PRD lama menjadi versi baru di urutan teratas | `prd.write` |
 
-### 4. Checklist Tasks & Backlog (`/projects/:projectId/tasks` & `/tasks`)
+### 4. Todo dalam Sprint (`/projects/:projectId/tasks` & `/tasks`)
 | Method | Endpoint | Deskripsi | Hak Akses |
 |---|---|---|---|
 | `GET` | `/api/v1/projects/:projectId/tasks` | Daftar seluruh task + status `hasVerifiedDp` / `dpWarning` | `projects.read` |
-| `POST` | `/api/v1/projects/:projectId/tasks` | Membuat task baru (default `status: "todo"`, `sprintId: null` Backlog) | `tasks.write` |
+| `POST` | `/api/v1/projects/:projectId/tasks` | Membuat Todo baru di Sprint yang dipilih; PIC opsional selama planning | `tasks.write` |
 | `PATCH` | `/api/v1/tasks/:id/status` | Mengubah status checklist (`todo` \| `done`) dan urutan | `tasks.write` |
-| `PATCH` | `/api/v1/tasks/:id/move-sprint` | Memindahkan task ke Sprint non-completed atau Backlog (`null`) | `tasks.write` |
-| `PATCH` | `/api/v1/tasks/:id` | Memperbarui detail task, prioritas, storyPoints Fibonacci, atau assignee | `tasks.write` |
+| `PATCH` | `/api/v1/tasks/:id/move-sprint` | Memindahkan Todo ke Sprint non-completed lain | `tasks.write` |
+| `PATCH` | `/api/v1/tasks/:id` | Memperbarui detail task, prioritas, atau assignee | `tasks.write` |
 | `DELETE` | `/api/v1/tasks/:id` | Menghapus task dari proyek | `tasks.delete` |
 
 ### 5. Sprint Lifecycle & Progres (`/projects/:projectId/sprints` & `/sprints`)

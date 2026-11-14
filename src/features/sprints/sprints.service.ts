@@ -45,7 +45,7 @@ async function assertSprintProjectAccess(
 /** Service domain daur hidup sprint, otorisasi roster proyek untuk Developer, dan kalkulasi progres kumulatif. */
 export const sprintsService = {
   /**
-   * Mengambil seluruh daftar sprint proyek terurut beserta metrik ringkas task & story points.
+   * Mengambil seluruh daftar sprint proyek terurut beserta metrik ringkas jumlah Todo.
    * Memvalidasi keanggotaan roster proyek apabila pengguna hanya berperan sebagai Developer.
    *
    * @param projectId - ID proyek target.
@@ -67,14 +67,6 @@ export const sprintsService = {
     const sprints = await sprintsRepository.findSprintsByProjectId(projectId);
 
     return sprints.map((sprint) => {
-      const totalPoints = sprint.tasks.reduce(
-        (sum, task) => sum + (task.storyPoints ?? 0),
-        0
-      );
-      const completedPoints = sprint.tasks
-        .filter((task) => task.status === "done")
-        .reduce((sum, task) => sum + (task.storyPoints ?? 0), 0);
-
       const totalTasks = sprint.tasks.length;
       const completedTasks = sprint.tasks.filter((task) => task.status === "done").length;
 
@@ -87,8 +79,6 @@ export const sprintsService = {
         startDate: sprint.startDate,
         endDate: sprint.endDate,
         completedAt: sprint.completedAt,
-        totalPoints,
-        completedPoints,
         totalTasks,
         completedTasks,
         createdAt: sprint.createdAt,
@@ -125,6 +115,16 @@ export const sprintsService = {
     }
 
     await assertSprintProjectAccess(project, user);
+
+    const assignedUserIds = [...new Set((dto.tasks ?? [])
+      .map((task) => task.assigneeId)
+      .filter((id): id is string => Boolean(id)))];
+    if (assignedUserIds.length) {
+      const rosterUserIds = new Set(await sprintsRepository.findRosterUserIds(projectId));
+      if (assignedUserIds.some((id) => !rosterUserIds.has(id))) {
+        throw new BadRequestError("PIC setiap Todo harus berasal dari roster proyek.");
+      }
+    }
 
     const parsedStart = dto.startDate ? new Date(dto.startDate) : null;
     if (parsedStart && Number.isNaN(parsedStart.getTime())) {
@@ -242,7 +242,7 @@ export const sprintsService = {
    * BR-SPRINT-03, BR-SPRINT-04, BR-SPRINT-05 & BR-PROJECT-01
    * Penutupan Sprint Manual & Atomik:
    * - End date tidak menutup otomatis
-   * - Setiap task TODO wajib memiliki tujuan (Backlog sprintId=null atau sprint non-completed lain)
+   * - Setiap task TODO yang tersisa wajib dialihkan ke sprint non-completed lain
    * - Transaksi atomik Prisma: pindahkan task, ubah status completed, isi completedAt, hitung progress completed/total
    */
   async completeSprint(id: string, dto: CloseSprintDto, user?: AuthUserPayload) {
@@ -393,6 +393,10 @@ export const sprintsService = {
 
     await assertSprintProjectAccess(sprint.project, user);
 
+    if (sprint.tasks.length > 0) {
+      throw new BadRequestError("Sprint yang masih memiliki Todo tidak dapat dihapus. Hapus atau pindahkan Todo terlebih dahulu.");
+    }
+
     await sprintsRepository.delete(id);
 
     // Rekalkulasi progres proyek (denominator berkurang)
@@ -413,7 +417,7 @@ export const sprintsService = {
     return { success: true, cumulativeProgress: cumulative };
   },
 
-  /** Menambahkan sekumpulan task backlog/lain dalam proyek yang sama ke sprint non-completed target. */
+  /** Menambahkan sekumpulan Todo proyek ke sprint non-completed target. */
   async assignTasks(sprintId: string, dto: AssignTasksToSprintDto, user?: AuthUserPayload) {
     const sprint = await sprintsRepository.findById(sprintId);
     if (!sprint) {
