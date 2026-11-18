@@ -1,4 +1,4 @@
-export type SprintStatus = "planning" | "active" | "completed";
+export type SprintStatus = "planning" | "active" | "completed" | "deleted";
 
 export interface CreateSprintDto {
   name: string;

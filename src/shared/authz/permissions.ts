@@ -61,6 +61,7 @@ export const DEFAULT_ROLE_POLICIES: Record<string, PermissionKey[]> = {
     "operations.events.manage",
     "tasks.write",
     "sprints.write",
+    "sprints.delete",
     "roster.manage",
     "status.request",
     "status.vote",

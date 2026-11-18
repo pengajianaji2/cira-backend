@@ -84,6 +84,19 @@ export const sprintsRepository = {
     });
   },
 
+  async hasSprintStarted(projectId: string, sprintId: string): Promise<boolean> {
+    const activity = await prisma.activityLog.findFirst({
+      where: {
+        projectId,
+        category: "project",
+        action: "SPRINT_START",
+        metadata: { path: ["sprintId"], equals: sprintId },
+      },
+      select: { id: true },
+    });
+    return Boolean(activity);
+  },
+
   async create(projectId: string, data: CreateSprintDto) {
     return prisma.$transaction(async (tx) => {
       const sprint = await tx.sprint.create({
@@ -139,14 +152,11 @@ export const sprintsRepository = {
   },
 
   /**
-   * BR-SPRINT-02 — Aktivasi Sprint secara atomik dengan advisory lock
-   * Memastikan maksimal 1 sprint aktif per proyek secara konkuren.
+   * Aktivasi Sprint secara atomik dengan advisory lock untuk mencegah race condition.
    */
   async startSprintAtomically(id: string, projectId: string, startDate: Date, endDate: Date) {
     return prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`sprint-start-${projectId}`}))`;
-      const active = await tx.sprint.findFirst({ where: { projectId, status: "active" }, select: { id: true } });
-      if (active && active.id !== id) return null;
       const changed = await tx.sprint.updateMany({
         where: { id, projectId, status: "planning" },
         data: { status: "active", startDate, endDate },
@@ -206,8 +216,8 @@ export const sprintsRepository = {
         if (!targetSprint || targetSprint.projectId !== projectId) {
           throw new BadRequestError("Sprint target pemindahan task harus berada dalam proyek yang sama.");
         }
-        if (targetSprint.status === "completed") {
-          throw new BadRequestError(`Sprint target "${targetSprint.name}" sudah berstatus completed dan tidak dapat menerima task.`);
+        if (targetSprint.status === "completed" || targetSprint.status === "deleted") {
+          throw new BadRequestError(`Sprint target "${targetSprint.name}" tidak dapat menerima task.`);
         }
 
         await tx.task.update({
@@ -230,7 +240,7 @@ export const sprintsRepository = {
 
       // 4. Hitung progres dari jumlah Todo selesai agar setiap task berbobot sama.
       const totalSprintCount = await tx.sprint.count({
-        where: { projectId },
+        where: { projectId, status: { not: "deleted" } },
       });
       const completedSprintCount = await tx.sprint.count({
         where: { projectId, status: "completed" },
@@ -283,9 +293,17 @@ export const sprintsRepository = {
     });
   },
 
-  async delete(id: string) {
-    return prisma.sprint.delete({
-      where: { id },
+  async softDelete(id: string) {
+    return prisma.sprint.updateMany({
+      where: { id, status: "planning" },
+      data: { status: "deleted" },
+    });
+  },
+
+  async restore(id: string) {
+    return prisma.sprint.updateMany({
+      where: { id, status: "deleted" },
+      data: { status: "planning" },
     });
   },
 
@@ -320,7 +338,7 @@ export const sprintsRepository = {
     totalSprintCount: number;
   }> {
     const [totalSprintCount, completedSprintCount, totalTasks, completedTasks] = await Promise.all([
-      prisma.sprint.count({ where: { projectId } }),
+      prisma.sprint.count({ where: { projectId, status: { not: "deleted" } } }),
       prisma.sprint.count({ where: { projectId, status: "completed" } }),
       prisma.task.count({ where: { projectId } }),
       prisma.task.count({ where: { projectId, status: "done" } }),

@@ -2,6 +2,10 @@ import { prisma } from "../../config/db.config.js";
 import { BadRequestError, ForbiddenError } from "../../shared/errors/AppError.js";
 import { DEFAULT_ROLE_POLICIES, PERMISSION_CATALOG, PermissionKey } from "../../shared/authz/permissions.js";
 
+function resolveRolePermissions(role: string, permissions: string[]): string[] {
+  return role === "operasional" ? [...new Set([...permissions, "sprints.delete"])] : permissions;
+}
+
 /** Service pengelolaan permission matrix RBAC dinamis per role (`RolePolicy`) beserta histori audit perubahannya. */
 export const policiesService = {
   /** Mengambil daftar lengkap policy permission untuk seluruh role standar (`owner`, `developer`, `operasional`). */
@@ -10,7 +14,7 @@ export const policiesService = {
     const byRole = new Map(saved.map((item) => [item.role, item.permissions]));
     return Object.keys(DEFAULT_ROLE_POLICIES).map((role) => ({
       role,
-      permissions: byRole.get(role) ?? DEFAULT_ROLE_POLICIES[role],
+      permissions: resolveRolePermissions(role, byRole.get(role) ?? DEFAULT_ROLE_POLICIES[role]),
     }));
   },
 
@@ -20,9 +24,10 @@ export const policiesService = {
     if (!knownRoles.length) return false;
     const records = await prisma.rolePolicy.findMany({ where: { role: { in: knownRoles } } });
     const byRole = new Map(records.map((record) => [record.role, record.permissions]));
-    return knownRoles.some((role) =>
-      (byRole.get(role) ?? DEFAULT_ROLE_POLICIES[role] ?? []).includes(permission as PermissionKey),
-    );
+    return knownRoles.some((role) => resolveRolePermissions(
+      role,
+      byRole.get(role) ?? DEFAULT_ROLE_POLICIES[role] ?? [],
+    ).includes(permission as PermissionKey));
   },
 
   /** Mengembalikan himpunan unik permission keys aktif hasil gabungan (`union`) seluruh role pengguna. */
@@ -30,7 +35,10 @@ export const policiesService = {
     const knownRoles = roles.map((role) => role === "ops" ? "operasional" : role === "dev" ? "developer" : role).filter((role) => role in DEFAULT_ROLE_POLICIES);
     const records = await prisma.rolePolicy.findMany({ where: { role: { in: knownRoles } } });
     const byRole = new Map(records.map((record) => [record.role, record.permissions]));
-    return [...new Set(knownRoles.flatMap((role) => byRole.get(role) ?? DEFAULT_ROLE_POLICIES[role] ?? []))];
+    return [...new Set(knownRoles.flatMap((role) => resolveRolePermissions(
+      role,
+      byRole.get(role) ?? DEFAULT_ROLE_POLICIES[role] ?? [],
+    )))];
   },
 
   /**

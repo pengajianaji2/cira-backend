@@ -117,6 +117,14 @@ sprintsRouter.delete(
 );
 
 sprintsRouter.post(
+  "/:id/restore",
+  requirePermission("sprints.delete"),
+  validateRequest({ params: sprintIdParamSchema }),
+  requireProjectResourceAccess("sprint"),
+  asyncHandler(sprintsController.restoreSprint)
+);
+
+sprintsRouter.post(
   "/:id/tasks",
   requirePermission("sprints.write"),
   validateRequest({
