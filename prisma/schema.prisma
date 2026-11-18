@@ -226,7 +226,7 @@ model Sprint {
   projectId   String
   name        String
   goal        String?   @db.Text
-  status      String    @default("planning") // planning, active, completed
+  status      String    @default("planning") // planning, active, completed, deleted
   startDate   DateTime?
   endDate     DateTime?
   completedAt DateTime?
