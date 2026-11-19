@@ -49,13 +49,7 @@ export const sprintsController = {
   async deleteSprint(req: Request, res: Response): Promise<Response> {
     const id = req.params.id as string;
     const result = await sprintsService.deleteSprint(id, req.user);
-    return sendSuccess(res, "Sprint berhasil dihapus sementara", result);
-  },
-
-  async restoreSprint(req: Request, res: Response): Promise<Response> {
-    const id = req.params.id as string;
-    const result = await sprintsService.restoreSprint(id, req.user);
-    return sendSuccess(res, "Sprint berhasil dipulihkan", result);
+    return sendSuccess(res, "Sprint dan Todo di dalamnya berhasil dihapus permanen", result);
   },
 
   async assignTasks(req: Request, res: Response): Promise<Response> {

@@ -68,7 +68,7 @@ export const tasksService = {
       throw new BadRequestError("Sprint harus berasal dari proyek yang sama dengan task.");
     }
     if (sprint.status === "completed" || sprint.status === "deleted") {
-      throw new BadRequestError("Sprint selesai atau dihapus sementara tidak dapat menerima task baru.");
+      throw new BadRequestError("Sprint selesai atau tidak tersedia tidak dapat menerima task baru.");
     }
 
     const status = dto.status || "todo";
@@ -167,7 +167,7 @@ export const tasksService = {
     }
 
     if (targetSprint.status === "completed" || targetSprint.status === "deleted") {
-      throw new BadRequestError("Sprint selesai atau dihapus sementara tidak dapat menerima task baru.");
+      throw new BadRequestError("Sprint selesai atau tidak tersedia tidak dapat menerima task baru.");
     }
 
     return tasksRepository.transaction(async (tx) => {
@@ -217,7 +217,7 @@ export const tasksService = {
         throw new BadRequestError("Sprint harus berasal dari proyek yang sama dengan task.");
       }
       if (sprint.status === "completed" || sprint.status === "deleted") {
-        throw new BadRequestError("Sprint selesai atau dihapus sementara tidak dapat menerima task baru.");
+        throw new BadRequestError("Sprint selesai atau tidak tersedia tidak dapat menerima task baru.");
       }
     }
 

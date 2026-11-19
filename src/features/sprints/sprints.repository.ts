@@ -84,19 +84,6 @@ export const sprintsRepository = {
     });
   },
 
-  async hasSprintStarted(projectId: string, sprintId: string): Promise<boolean> {
-    const activity = await prisma.activityLog.findFirst({
-      where: {
-        projectId,
-        category: "project",
-        action: "SPRINT_START",
-        metadata: { path: ["sprintId"], equals: sprintId },
-      },
-      select: { id: true },
-    });
-    return Boolean(activity);
-  },
-
   async create(projectId: string, data: CreateSprintDto) {
     return prisma.$transaction(async (tx) => {
       const sprint = await tx.sprint.create({
@@ -293,17 +280,57 @@ export const sprintsRepository = {
     });
   },
 
-  async softDelete(id: string) {
-    return prisma.sprint.updateMany({
-      where: { id, status: "planning" },
-      data: { status: "deleted" },
-    });
-  },
+  async hardDeletePlanningSprint(
+    id: string,
+    projectId: string,
+    actor?: { id?: string; name?: string; role?: string }
+  ): Promise<{
+    totalTasks: number;
+    completedTasks: number;
+    progress: number;
+    completedSprintCount: number;
+    totalSprintCount: number;
+  } | null> {
+    return prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`sprint-start-${projectId}`}))`;
+      const sprint = await tx.sprint.findFirst({ where: { id, projectId } });
+      if (!sprint || sprint.status !== "planning") return null;
 
-  async restore(id: string) {
-    return prisma.sprint.updateMany({
-      where: { id, status: "deleted" },
-      data: { status: "planning" },
+      const started = await tx.activityLog.findFirst({
+        where: {
+          projectId,
+          category: "project",
+          action: "SPRINT_START",
+          metadata: { path: ["sprintId"], equals: id },
+        },
+        select: { id: true },
+      });
+      if (started) return null;
+
+      await tx.task.deleteMany({ where: { sprintId: id } });
+      await tx.sprint.delete({ where: { id } });
+      await tx.activityLog.create({
+        data: {
+          projectId,
+          category: "project",
+          action: "SPRINT_DELETE",
+          description: `Sprint "${sprint.name}" dan Todo di dalamnya dihapus permanen.`,
+          userId: actor?.id,
+          userName: actor?.name,
+          userRole: actor?.role,
+          metadata: { sprintId: id, name: sprint.name, permanent: true },
+        },
+      });
+
+      const [totalSprintCount, completedSprintCount, totalTasks, completedTasks] = await Promise.all([
+        tx.sprint.count({ where: { projectId, status: { not: "deleted" } } }),
+        tx.sprint.count({ where: { projectId, status: "completed" } }),
+        tx.task.count({ where: { projectId } }),
+        tx.task.count({ where: { projectId, status: "done" } }),
+      ]);
+      const progress = totalTasks ? Math.round((completedTasks / totalTasks) * 1000) / 10 : 0;
+      await tx.project.update({ where: { id: projectId }, data: { progress } });
+      return { totalTasks, completedTasks, progress, completedSprintCount, totalSprintCount };
     });
   },
 

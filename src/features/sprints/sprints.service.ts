@@ -276,10 +276,6 @@ export const sprintsService = {
     if (sprint.status === "completed") {
       throw new BadRequestError("Sprint yang telah selesai tidak dapat diubah melalui pembaruan umum.");
     }
-    if (sprint.status === "deleted") {
-      throw new BadRequestError("Sprint yang dihapus sementara tidak dapat diubah.");
-    }
-
     if (dto.startDate) {
       const parsedStart = new Date(dto.startDate);
       if (Number.isNaN(parsedStart.getTime())) {
@@ -379,7 +375,7 @@ export const sprintsService = {
     };
   },
 
-  /** Menghapus sementara hanya sprint planning kosong; sprint yang pernah berjalan tidak dapat dihapus. */
+  /** Menghapus permanen sprint planning yang belum pernah dimulai beserta Todo-nya. */
   async deleteSprint(id: string, user?: AuthUserPayload) {
     const sprint = await sprintsRepository.findById(id);
     if (!sprint) {
@@ -389,64 +385,19 @@ export const sprintsService = {
     await assertSprintProjectAccess(sprint.project, user);
 
     if (sprint.status !== "planning") {
-      throw new BadRequestError("Hanya sprint planning yang belum pernah berjalan yang dapat dihapus sementara.");
+      throw new BadRequestError("Hanya sprint planning yang belum pernah dimulai yang dapat dihapus.");
     }
 
-    if (await sprintsRepository.hasSprintStarted(sprint.projectId, id)) {
-      throw new BadRequestError("Sprint yang pernah berjalan tidak dapat dihapus.");
-    }
-
-    const deleted = await sprintsRepository.softDelete(id);
-    if (deleted.count !== 1) {
-      throw new BadRequestError("Status sprint berubah. Muat ulang data sebelum mencoba lagi.");
-    }
-
-    // Rekalkulasi progres proyek (denominator berkurang)
-    const cumulative = await sprintsRepository.calculateCumulativeProgress(sprint.projectId);
-    await sprintsRepository.updateProjectProgress(sprint.projectId, cumulative.progress);
-
-    await sprintsRepository.logActivity({
-      projectId: sprint.projectId,
-      category: "project",
-      action: "SPRINT_DELETE",
-      description: `Sprint "${sprint.name}" dihapus sementara.`,
-      userId: user?.id,
-      userName: user?.name,
-      userRole: user?.roles?.[0],
-      metadata: { sprintId: id, name: sprint.name },
+    const cumulative = await sprintsRepository.hardDeletePlanningSprint(id, sprint.projectId, {
+      id: user?.id,
+      name: user?.name,
+      role: user?.roles?.[0],
     });
+    if (!cumulative) {
+      throw new BadRequestError("Hanya sprint planning yang belum pernah dimulai yang dapat dihapus.");
+    }
 
     return { success: true, cumulativeProgress: cumulative };
-  },
-
-  /** Memulihkan sprint yang dihapus sementara ke status planning. */
-  async restoreSprint(id: string, user?: AuthUserPayload) {
-    const sprint = await sprintsRepository.findById(id);
-    if (!sprint) throw new NotFoundError(`Sprint dengan ID '${id}' tidak ditemukan.`);
-    await assertSprintProjectAccess(sprint.project, user);
-    if (sprint.status !== "deleted") {
-      throw new BadRequestError("Hanya sprint yang dihapus sementara yang dapat dipulihkan.");
-    }
-
-    const restoreResult = await sprintsRepository.restore(id);
-    if (restoreResult.count !== 1) {
-      throw new BadRequestError("Status sprint berubah. Muat ulang data sebelum mencoba lagi.");
-    }
-    const restored = await sprintsRepository.findById(id);
-    if (!restored) throw new NotFoundError(`Sprint dengan ID '${id}' tidak ditemukan.`);
-    const cumulative = await sprintsRepository.calculateCumulativeProgress(sprint.projectId);
-    await sprintsRepository.updateProjectProgress(sprint.projectId, cumulative.progress);
-    await sprintsRepository.logActivity({
-      projectId: sprint.projectId,
-      category: "project",
-      action: "SPRINT_RESTORE",
-      description: `Sprint "${sprint.name}" dipulihkan ke status planning.`,
-      userId: user?.id,
-      userName: user?.name,
-      userRole: user?.roles?.[0],
-      metadata: { sprintId: id, name: sprint.name },
-    });
-    return { sprint: restored, cumulativeProgress: cumulative };
   },
 
   /** Menambahkan sekumpulan Todo proyek ke sprint non-completed target. */
@@ -459,7 +410,7 @@ export const sprintsService = {
     await assertSprintProjectAccess(sprint.project, user);
 
     if (sprint.status === "completed" || sprint.status === "deleted") {
-      throw new BadRequestError("Sprint selesai atau dihapus sementara tidak dapat menerima task baru.");
+      throw new BadRequestError("Sprint selesai atau tidak tersedia tidak dapat menerima task baru.");
     }
 
     const tasks = await sprintsRepository.findTasksByIds(dto.taskIds);
